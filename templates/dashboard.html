@@ -1,1 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<h3 class="mb-4">Dashboard</h3>
+<div class="row g-3">
+  <div class="col-md-4">
+    <div class="card p-3">
+      <h5>Incidents</h5>
+      <p>Create and track incidents with completeness validation.</p>
+      <a class="btn btn-primary" href="{{ url_for('incidents.list_incidents') }}">Open</a>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card p-3">
+      <h5>SDS Library</h5>
+      <p>View, chat with, download, and generate QR codes for SDS.</p>
+      <a class="btn btn-primary" href="{{ url_for('sds.sds_list') }}">Open</a>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card p-3">
+      <h5>Upload</h5>
+      <p>Upload a single SDS PDF or a ZIP for bulk ingest.</p>
+      <a class="btn btn-secondary" href="{{ url_for('sds.sds_upload') }}">Upload</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
 
