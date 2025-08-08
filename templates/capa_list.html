@@ -67,4 +67,765 @@
                     <option value="critical">Critical</option>
                     <option value="high">High</option>
                     <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <select class="form-select" id="typeFilter">
+                    <option value="">All Types</option>
+                    <option value="corrective">Corrective</option>
+                    <option value="preventive">Preventive</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <input type="text" class="form-control" id="searchInput" placeholder="Search CAPAs...">
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CAPA Table -->
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover" id="capaTable">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Title</th>
+                        <th>Type</th>
+                        <th>Assignee</th>
+                        <th>Due Date</th>
+                        <th>Priority</th>
+                        <th>Status</th>
+                        <th>Source</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for capa in capas %}
+                    <tr data-status="{{ capa.status }}" data-priority="{{ capa.priority }}" data-type="{{ capa.type }}">
+                        <td><code>{{ capa.id[:8] }}</code></td>
+                        <td>
+                            <strong>{{ capa.title }}</strong>
+                            {% if capa.description %}
+                            <br><small class="text-muted">{{ capa.description[:100] }}{% if capa.description|length > 100 %}...{% endif %}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-{{ 'success' if capa.type == 'preventive' else 'warning' }}">
+                                {{ capa.type|title }}
+                            </span>
+                        </td>
+                        <td>{{ capa.assignee or 'Unassigned' }}</td>
+                        <td>
+                            {{ capa.due_date }}
+                            {% if capa.due_date %}
+                                {% set due_date = capa.due_date | date_from_iso %}
+                                {% if due_date < moment().date() and capa.status in ['open', 'in_progress'] %}
+                                    <br><small class="text-danger">Overdue</small>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-{{ 'danger' if capa.priority == 'critical' else ('warning' if capa.priority == 'high' else ('info' if capa.priority == 'medium' else 'secondary')) }}">
+                                {{ capa.priority|title }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge bg-{{ 'success' if capa.status == 'completed' else ('warning' if capa.status == 'in_progress' else 'secondary') }}">
+                                {{ capa.status|replace('_', ' ')|title }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if capa.source != 'manual' %}
+                                <span class="badge bg-info">{{ capa.source|title }}</span>
+                            {% else %}
+                                <span class="text-muted">Manual</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('capa.capa_detail', capa_id=capa.id) }}" class="btn btn-outline-primary">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                {% if capa.status != 'completed' %}
+                                <button class="btn btn-outline-success" onclick="quickUpdate('{{ capa.id }}', 'completed')">
+                                    <i class="bi bi-check"></i>
+                                </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+// Table filtering functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const table = document.getElementById('capaTable');
+    const statusFilter = document.getElementById('statusFilter');
+    const priorityFilter = document.getElementById('priorityFilter');
+    const typeFilter = document.getElementById('typeFilter');
+    const searchInput = document.getElementById('searchInput');
+    
+    function filterTable() {
+        const rows = table.querySelectorAll('tbody tr');
+        const statusValue = statusFilter.value.toLowerCase();
+        const priorityValue = priorityFilter.value.toLowerCase();
+        const typeValue = typeFilter.value.toLowerCase();
+        const searchValue = searchInput.value.toLowerCase();
+        
+        rows.forEach(row => {
+            const status = row.dataset.status.toLowerCase();
+            const priority = row.dataset.priority.toLowerCase();
+            const type = row.dataset.type.toLowerCase();
+            const text = row.textContent.toLowerCase();
+            
+            const statusMatch = !statusValue || status === statusValue;
+            const priorityMatch = !priorityValue || priority === priorityValue;
+            const typeMatch = !typeValue || type === typeValue;
+            const searchMatch = !searchValue || text.includes(searchValue);
+            
+            if (statusMatch && priorityMatch && typeMatch && searchMatch) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    }
+    
+    statusFilter.addEventListener('change', filterTable);
+    priorityFilter.addEventListener('change', filterTable);
+    typeFilter.addEventListener('change', filterTable);
+    searchInput.addEventListener('input', filterTable);
+    
+    // Load overdue count
+    fetch('/capa/api/stats')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('overdueCount').textContent = data.overdue || 0;
+        })
+        .catch(error => console.error('Error loading CAPA stats:', error));
+});
+
+function quickUpdate(capaId, status) {
+    if (confirm(`Mark CAPA as ${status}?`)) {
+        fetch(`/capa/${capaId}/update`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `status=${status}&comment=Quick update&updated_by=Current User`
+        })
+        .then(response => {
+            if (response.ok) {
+                location.reload();
+            } else {
+                alert('Error updating CAPA');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error updating CAPA');
+        });
+    }
+}
+</script>
+{% endblock %}
+
+<!-- templates/risk_result.html - Risk Assessment Results -->
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid">
+    <h3 class="mb-4">
+        <i class="bi bi-graph-up text-info"></i> Risk Assessment Results
+    </h3>
+
+    <div class="row">
+        <div class="col-md-8">
+            <!-- Risk Summary Card -->
+            <div class="card shadow mb-4">
+                <div class="card-header bg-{{ 'danger' if risk_data.risk_level == 'Critical' else ('warning' if risk_data.risk_level == 'High' else ('info' if risk_data.risk_level == 'Medium' else 'success')) }} text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-exclamation-triangle"></i> Risk Level: {{ risk_data.risk_level }}
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Risk Details</h6>
+                            <p><strong>Title:</strong> {{ risk_data.title }}</p>
+                            <p><strong>Description:</strong> {{ risk_data.description }}</p>
+                            <p><strong>Assessment Date:</strong> {{ moment(risk_data.created_date).format('YYYY-MM-DD HH:mm') }}</p>
+                            <p><strong>Assessed By:</strong> {{ risk_data.created_by }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Risk Calculation</h6>
+                            <div class="risk-calculation">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span>Likelihood:</span>
+                                    <span class="badge bg-primary">{{ risk_data.likelihood }}/10</span>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span>Maximum Severity:</span>
+                                    <span class="badge bg-danger">{{ risk_data.severity_scores.values()|max }}/10</span>
+                                </div>
+                                <hr>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <strong>Risk Score:</strong>
+                                    <h4 class="text-{{ 'danger' if risk_data.risk_level == 'Critical' else ('warning' if risk_data.risk_level == 'High' else ('info' if risk_data.risk_level == 'Medium' else 'success')) }}">
+                                        {{ risk_data.risk_score }}
+                                    </h4>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Severity Breakdown -->
+            <div class="card shadow mb-4">
+                <div class="card-header">
+                    <h6><i class="bi bi-bar-chart"></i> Severity Breakdown</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        {% for category, score in risk_data.severity_scores.items() %}
+                        <div class="col-md-6 mb-3">
+                            <div class="severity-item">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <span class="text-capitalize">
+                                        <i class="bi bi-{{ 'person' if category == 'people' else 
+                                                              ('tree' if category == 'environment' else
+                                                              ('currency-dollar' if category == 'cost' else
+                                                              ('megaphone' if category == 'reputation' else 'shield-check'))) }}"></i>
+                                        {{ category.replace('_', ' ').title() }}
+                                    </span>
+                                    <span class="badge bg-{{ 'danger' if score >= 8 else ('warning' if score >= 6 else ('info' if score >= 4 else 'secondary')) }}">
+                                        {{ score }}/10
+                                    </span>
+                                </div>
+                                <div class="progress" style="height: 8px;">
+                                    <div class="progress-bar bg-{{ 'danger' if score >= 8 else ('warning' if score >= 6 else ('info' if score >= 4 else 'secondary')) }}" 
+                                         style="width: {{ (score/10)*100 }}%"></div>
+                                </div>
+                                <small class="text-muted">{{ severity_scale[category][score] }}</small>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Required -->
+            <div class="card shadow">
+                <div class="card-header bg-warning text-dark">
+                    <h6 class="mb-0"><i class="bi bi-lightning"></i> Recommended Actions</h6>
+                </div>
+                <div class="card-body">
+                    {% if risk_data.risk_level == 'Critical' %}
+                    <div class="alert alert-danger">
+                        <h6><i class="bi bi-exclamation-triangle"></i> Immediate Action Required</h6>
+                        <ul class="mb-0">
+                            <li>Stop all related activities immediately</li>
+                            <li>Implement emergency controls</li>
+                            <li>Notify senior management</li>
+                            <li>Create high-priority CAPA within 24 hours</li>
+                        </ul>
+                    </div>
+                    {% elif risk_data.risk_level == 'High' %}
+                    <div class="alert alert-warning">
+                        <h6><i class="bi bi-exclamation-circle"></i> Priority Action Required</h6>
+                        <ul class="mb-0">
+                            <li>Review and strengthen existing controls</li>
+                            <li>Develop mitigation plan within 7 days</li>
+                            <li>Assign responsible person</li>
+                            <li>Monitor closely</li>
+                        </ul>
+                    </div>
+                    {% elif risk_data.risk_level == 'Medium' %}
+                    <div class="alert alert-info">
+                        <h6><i class="bi bi-info-circle"></i> Planned Action Recommended</h6>
+                        <ul class="mb-0">
+                            <li>Schedule risk mitigation activities</li>
+                            <li>Review controls quarterly</li>
+                            <li>Document mitigation measures</li>
+                        </ul>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-success">
+                        <h6><i class="bi bi-check-circle"></i> Monitor and Review</h6>
+                        <ul class="mb-0">
+                            <li>Current controls appear adequate</li>
+                            <li>Review annually or when conditions change</li>
+                            <li>Document acceptance of residual risk</li>
+                        </ul>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <!-- Quick Actions -->
+            <div class="card shadow mb-4">
+                <div class="card-header">
+                    <h6><i class="bi bi-lightning"></i> Quick Actions</h6>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        {% if risk_data.risk_level in ['Critical', 'High'] %}
+                        <a href="{{ url_for('capa.new_capa', source='risk', source_id=risk_data.id) }}" class="btn btn-danger">
+                            <i class="bi bi-plus-circle"></i> Create CAPA
+                        </a>
+                        {% endif %}
+                        <a href="{{ url_for('incidents.new_incident', related_risk=risk_data.id) }}" class="btn btn-warning">
+                            <i class="bi bi-exclamation-triangle"></i> Report Related Incident
+                        </a>
+                        <a href="{{ url_for('risk.risk_register') }}" class="btn btn-info">
+                            <i class="bi bi-list"></i> View Risk Register
+                        </a>
+                        <a href="{{ url_for('risk.risk_assessment') }}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-repeat"></i> New Assessment
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Risk Matrix Visual -->
+            <div class="card shadow">
+                <div class="card-header">
+                    <h6><i class="bi bi-grid"></i> Risk Matrix Position</h6>
+                </div>
+                <div class="card-body">
+                    <div class="risk-matrix-visual">
+                        <canvas id="riskMatrix" width="300" height="300"></canvas>
+                    </div>
+                    <div class="mt-3">
+                        <small class="text-muted">
+                            Your risk plots at Likelihood {{ risk_data.likelihood }} × Severity {{ risk_data.severity_scores.values()|max }}
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.severity-item {
+    padding: 1rem;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+}
+
+.risk-calculation {
+    background-color: #f8f9fa;
+    padding: 1rem;
+    border-radius: 8px;
+}
+
+.risk-matrix-visual {
+    text-align: center;
+}
+</style>
+
+<script>
+// Draw risk matrix visualization
+document.addEventListener('DOMContentLoaded', function() {
+    const canvas = document.getElementById('riskMatrix');
+    const ctx = canvas.getContext('2d');
+    
+    // Matrix dimensions
+    const cols = 10;
+    const rows = 10;
+    const cellWidth = canvas.width / cols;
+    const cellHeight = canvas.height / rows;
+    
+    // Draw grid
+    ctx.strokeStyle = '#ddd';
+    ctx.lineWidth = 1;
+    
+    for (let i = 0; i <= cols; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * cellWidth, 0);
+        ctx.lineTo(i * cellWidth, canvas.height);
+        ctx.stroke();
+    }
+    
+    for (let i = 0; i <= rows; i++) {
+        ctx.beginPath();
+        ctx.moveTo(0, i * cellHeight);
+        ctx.lineTo(canvas.width, i * cellHeight);
+        ctx.stroke();
+    }
+    
+    // Color zones
+    for (let x = 0; x < cols; x++) {
+        for (let y = 0; y < rows; y++) {
+            const likelihood = x + 1;
+            const severity = rows - y;
+            const score = likelihood * severity;
+            
+            let color;
+            if (score >= 80) color = 'rgba(220, 53, 69, 0.3)';      // Critical
+            else if (score >= 60) color = 'rgba(255, 193, 7, 0.3)'; // High
+            else if (score >= 40) color = 'rgba(13, 202, 240, 0.3)'; // Medium
+            else if (score >= 20) color = 'rgba(25, 135, 84, 0.3)';  // Low
+            else color = 'rgba(108, 117, 125, 0.3)';                 // Very Low
+            
+            ctx.fillStyle = color;
+            ctx.fillRect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
+        }
+    }
+    
+    // Plot current risk
+    const likelihood = {{ risk_data.likelihood }};
+    const maxSeverity = {{ risk_data.severity_scores.values()|max }};
+    
+    const x = (likelihood - 1) * cellWidth + cellWidth/2;
+    const y = (rows - maxSeverity) * cellHeight + cellHeight/2;
+    
+    ctx.fillStyle = '#dc3545';
+    ctx.beginPath();
+    ctx.arc(x, y, 8, 0, 2 * Math.PI);
+    ctx.fill();
+    
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    // Add labels
+    ctx.fillStyle = '#000';
+    ctx.font = '12px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('Likelihood →', canvas.width/2, canvas.height - 5);
+    
+    ctx.save();
+    ctx.translate(15, canvas.height/2);
+    ctx.rotate(-Math.PI/2);
+    ctx.fillText('← Severity', 0, 0);
+    ctx.restore();
+});
+</script>
+{% endblock %}
+
+<!-- templates/audit_conduct.html - Audit Execution Interface -->
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid">
+    <h3 class="mb-4">
+        <i class="bi bi-clipboard-check text-primary"></i> Conduct Audit: {{ audit.title }}
+    </h3>
+
+    <div class="row">
+        <div class="col-md-8">
+            <form method="post" class="audit-form">
+                <!-- Audit Header -->
+                <div class="card shadow mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h6 class="mb-0">Audit Information</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>Audit ID:</strong> {{ audit.id }}</p>
+                                <p><strong>Type:</strong> {{ audit.type }}</p>
+                                <p><strong>Location:</strong> {{ audit.location }}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>Auditor:</strong> {{ audit.auditor }}</p>
+                                <p><strong>Scheduled:</strong> {{ audit.scheduled_date }}</p>
+                                <p><strong>Template:</strong> {{ audit.template }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Checklist Items -->
+                <div class="card shadow mb-4">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="bi bi-list-check"></i> Audit Checklist
+                            <span class="badge bg-info ms-2" id="progressBadge">0 / {{ audit.checklist_items|length }}</span>
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        {% for item in audit.checklist_items %}
+                        <div class="checklist-item card mb-3" data-category="{{ item.category }}">
+                            <div class="card-body">
+                                <div class="row align-items-start">
+                                    <div class="col-md-8">
+                                        <h6 class="mb-2">{{ item.question }}</h6>
+                                        <small class="text-muted">Category: {{ item.category|title }} | Points: {{ item.points }}</small>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="response-controls">
+                                            <div class="btn-group d-grid gap-2 d-md-flex" role="group">
+                                                <input type="radio" class="btn-check" name="item_{{ item.id }}" 
+                                                       id="yes_{{ item.id }}" value="yes" onchange="updateProgress()">
+                                                <label class="btn btn-outline-success" for="yes_{{ item.id }}">
+                                                    <i class="bi bi-check"></i> Yes
+                                                </label>
+
+                                                <input type="radio" class="btn-check" name="item_{{ item.id }}" 
+                                                       id="no_{{ item.id }}" value="no" onchange="updateProgress(); showFindingFields('{{ item.id }}')">
+                                                <label class="btn btn-outline-danger" for="no_{{ item.id }}">
+                                                    <i class="bi bi-x"></i> No
+                                                </label>
+
+                                                <input type="radio" class="btn-check" name="item_{{ item.id }}" 
+                                                       id="na_{{ item.id }}" value="na" onchange="updateProgress()">
+                                                <label class="btn btn-outline-secondary" for="na_{{ item.id }}">
+                                                    N/A
+                                                </label>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Finding Details (shown only for "No" responses) -->
+                                        <div class="finding-details mt-3" id="finding_{{ item.id }}" style="display: none;">
+                                            <div class="mb-2">
+                                                <label class="form-label">Severity</label>
+                                                <select class="form-select form-select-sm" name="severity_{{ item.id }}">
+                                                    <option value="low">Low</option>
+                                                    <option value="medium" selected>Medium</option>
+                                                    <option value="high">High</option>
+                                                    <option value="critical">Critical</option>
+                                                </select>
+                                            </div>
+                                            <div class="mb-2">
+                                                <label class="form-label">Action Required</label>
+                                                <textarea class="form-control form-control-sm" name="action_{{ item.id }}" 
+                                                          rows="2" placeholder="Describe the corrective action needed"></textarea>
+                                            </div>
+                                            <div class="mb-2">
+                                                <label class="form-label">Photo Evidence</label>
+                                                <input type="file" class="form-control form-control-sm" name="photo_{{ item.id }}" accept="image/*">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Completion Notes -->
+                <div class="card shadow mb-4">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="bi bi-chat-text"></i> Completion Notes</h6>
+                    </div>
+                    <div class="card-body">
+                        <textarea class="form-control" name="completion_notes" rows="4" 
+                                  placeholder="Add any additional observations, recommendations, or notes about the audit"></textarea>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between">
+                    <a href="{{ url_for('audits.audit_detail', audit_id=audit.id) }}" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left"></i> Back to Audit
+                    </a>
+                    <button type="submit" class="btn btn-success" id="completeBtn" disabled>
+                        <i class="bi bi-check-circle"></i> Complete Audit
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <div class="col-md-4">
+            <!-- Progress Summary -->
+            <div class="card shadow mb-4 sticky-top">
+                <div class="card-header bg-info text-white">
+                    <h6 class="mb-0"><i class="bi bi-graph-up"></i> Progress Summary</h6>
+                </div>
+                <div class="card-body">
+                    <div class="progress mb-3" style="height: 20px;">
+                        <div class="progress-bar bg-success" id="progressBar" style="width: 0%">
+                            <span id="progressText">0%</span>
+                        </div>
+                    </div>
+                    
+                    <div class="row text-center">
+                        <div class="col-6">
+                            <div class="border-end">
+                                <h4 class="text-success" id="yesCount">0</h4>
+                                <small>Compliant</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <h4 class="text-danger" id="noCount">0</h4>
+                            <small>Findings</small>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="predicted-score">
+                        <h6>Predicted Score</h6>
+                        <h3 class="text-center" id="predictedScore">--</h3>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Tips -->
+            <div class="card shadow">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-lightbulb"></i> Audit Tips</h6>
+                </div>
+                <div class="card-body">
+                    <ul class="small mb-0">
+                        <li>Take photos of any findings for evidence</li>
+                        <li>Be specific in corrective action descriptions</li>
+                        <li>Engage with personnel during the audit</li>
+                        <li>Note positive observations in completion notes</li>
+                        <li>Consider immediate vs. long-term actions</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.checklist-item {
+    transition: all 0.2s;
+}
+
+.checklist-item:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.checklist-item.completed {
+    background-color: #f8f9fa;
+    border-left: 4px solid #28a745;
+}
+
+.finding-details {
+    background-color: #fff3cd;
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid #ffeaa7;
+}
+
+.sticky-top {
+    top: 20px;
+}
+</style>
+
+<script>
+let totalItems = {{ audit.checklist_items|length }};
+let completedItems = 0;
+let yesResponses = 0;
+let noResponses = 0;
+
+function updateProgress() {
+    const responses = document.querySelectorAll('input[type="radio"]:checked');
+    completedItems = responses.length;
+    
+    // Count yes/no responses
+    yesResponses = document.querySelectorAll('input[value="yes"]:checked').length;
+    noResponses = document.querySelectorAll('input[value="no"]:checked').length;
+    
+    // Update progress bar
+    const progressPercent = (completedItems / totalItems) * 100;
+    document.getElementById('progressBar').style.width = progressPercent + '%';
+    document.getElementById('progressText').textContent = Math.round(progressPercent) + '%';
+    document.getElementById('progressBadge').textContent = completedItems + ' / ' + totalItems;
+    
+    // Update counters
+    document.getElementById('yesCount').textContent = yesResponses;
+    document.getElementById('noCount').textContent = noResponses;
+    
+    // Calculate predicted score
+    const totalPoints = {{ audit.checklist_items|sum(attribute='points') }};
+    const earnedPoints = Array.from(document.querySelectorAll('input[value="yes"]:checked'))
+                             .reduce((sum, input) => {
+                                 const itemId = input.name.replace('item_', '');
+                                 const points = getItemPoints(itemId);
+                                 return sum + points;
+                             }, 0);
+    
+    const predictedScore = totalPoints > 0 ? Math.round((earnedPoints / totalPoints) * 100) : 0;
+    document.getElementById('predictedScore').textContent = predictedScore + '%';
+    
+    // Enable/disable complete button
+    document.getElementById('completeBtn').disabled = completedItems < totalItems;
+    
+    // Mark completed items
+    responses.forEach(response =><!-- templates/capa_list.html - CAPA Management List -->
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3><i class="bi bi-arrow-repeat text-primary"></i> Corrective & Preventive Actions (CAPA)</h3>
+    <div>
+        <a href="{{ url_for('capa.new_capa') }}" class="btn btn-primary">
+            <i class="bi bi-plus-circle"></i> New CAPA
+        </a>
+        <a href="{{ url_for('capa.capa_dashboard') }}" class="btn btn-info">
+            <i class="bi bi-graph-up"></i> Dashboard
+        </a>
+    </div>
+</div>
+
+<!-- Quick Stats -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-center bg-primary text-white">
+            <div class="card-body">
+                <h4>{{ capas|selectattr("status", "equalto", "open")|list|length }}</h4>
+                <small>Open</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center bg-warning text-white">
+            <div class="card-body">
+                <h4>{{ capas|selectattr("status", "equalto", "in_progress")|list|length }}</h4>
+                <small>In Progress</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center bg-success text-white">
+            <div class="card-body">
+                <h4>{{ capas|selectattr("status", "equalto", "completed")|list|length }}</h4>
+                <small>Completed</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center bg-danger text-white">
+            <div class="card-body">
+                <h4 id="overdueCount">-</h4>
+                <small>Overdue</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filters and Search -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <select class="form-select" id="statusFilter">
+                    <option value="">All Statuses</option>
+                    <option value="open">Open</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="completed">Completed</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <select class="form-select" id="priorityFilter">
+                    <option value="">All Priorities</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
                     <option value="low
