@@ -1,825 +1,740 @@
-<!-- templates/enhanced_dashboard.html - Main Dashboard -->
-{% extends "base.html" %}
-{% block content %}
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="d-flex justify-content-between align-items-center">
-            <h2><i class="bi bi-shield-check text-primary"></i> Smart EHS Dashboard</h2>
-            <div class="d-flex gap-2">
-                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#chatModal">
-                    <i class="bi bi-robot"></i> Ask EHS Assistant
-                </button>
-                <div class="dropdown">
-                    <button class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">
-                        <i class="bi bi-plus-circle"></i> Quick Actions
-                    </button>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="{{ url_for('incidents.new_incident') }}">
-                            <i class="bi bi-exclamation-triangle text-danger"></i> Report Incident
-                        </a></li>
-                        <li><a class="dropdown-item" href="{{ url_for('safety_concerns.new_concern') }}">
-                            <i class="bi bi-shield-exclamation text-warning"></i> Safety Concern
-                        </a></li>
-                        <li><a class="dropdown-item" href="{{ url_for('risk.risk_assessment') }}">
-                            <i class="bi bi-graph-up text-info"></i> Risk Assessment
-                        </a></li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- SLA Alerts -->
-<div id="slaAlerts"></div>
-
-<!-- Quick Stats Row -->
-<div class="row g-3 mb-4">
-    <div class="col-md-2">
-        <div class="card bg-primary text-white stat-card">
-            <div class="card-body text-center">
-                <i class="bi bi-exclamation-triangle fs-2 mb-2"></i>
-                <h3 class="mb-0" id="totalIncidents">{{ stats.incidents.total|default(0) }}</h3>
-                <small>Total Incidents</small>
-                <div class="mt-1">
-                    <small class="badge bg-light text-dark">{{ stats.incidents.open|default(0) }} Open</small>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-2">
-        <div class="card bg-warning text-white stat-card">
-            <div class="card-body text-center">
-                <i class="bi bi-arrow-repeat fs-2 mb-2"></i>
-                <h3 class="mb-0" id="overdueCapas">{{ stats.capas.overdue|default(0) }}</h3>
-                <small>Overdue CAPAs</small>
-                <div class="mt-1">
-                    <small class="badge bg-light text-dark">{{ stats.capas.total|default(0) }} Total</small>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-2">
-        <div class="card bg-success text-white stat-card">
-            <div class="card-body text-center">
-                <i class="bi bi-clipboard-check fs-2 mb-2"></i>
-                <h3 class="mb-0" id="avgAuditScore">{{ stats.audits.avg_score|default(0) }}%</h3>
-                <small>Avg Audit Score</small>
-                <div class="mt-1">
-                    <small class="badge bg-light text-dark">{{ stats.audits.completed|default(0) }} Completed</small>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-2">
-        <div class="card bg-info text-white stat-card">
-            <div class="card-body text-center">
-                <i class="bi bi-shield-exclamation fs-2 mb-2"></i>
-                <h3 class="mb-0" id="safetyConcerns">{{ stats.safety_concerns.total|default(0) }}</h3>
-                <small>Safety Concerns</small>
-                <div class="mt-1">
-                    <small class="badge bg-light text-dark">{{ stats.safety_concerns.open|default(0) }} Open</small>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-2">
-        <div class="card bg-danger text-white stat-card">
-            <div class="card-body text-center">
-                <i class="bi bi-graph-up fs-2 mb-2"></i>
-                <h3 class="mb-0" id="highRisks">{{ stats.risk_assessments.high_risk|default(0) }}</h3>
-                <small>High Risk Items</small>
-                <div class="mt-1">
-                    <small class="badge bg-light text-dark">{{ stats.risk_assessments.total|default(0) }} Total</small>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-2">
-        <div class="card bg-secondary text-white stat-card">
-            <div class="card-body text-center">
-                <i class="bi bi-file-earmark-text fs-2 mb-2"></i>
-                <h3 class="mb-0" id="sdsCount">{{ stats.sds.total|default(0) }}</h3>
-                <small>SDS Library</small>
-                <div class="mt-1">
-                    <small class="badge bg-light text-dark">Searchable</small>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Main Content Row -->
-<div class="row g-3 mb-4">
-    <!-- Quick Actions -->
-    <div class="col-md-6">
-        <div class="card h-100">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0"><i class="bi bi-lightning"></i> Quick Actions</h5>
-            </div>
-            <div class="card-body">
-                <div class="row g-2">
-                    <div class="col-6">
-                        <a href="{{ url_for('incidents.new_incident') }}" class="btn btn-outline-danger w-100 action-btn">
-                            <i class="bi bi-exclamation-triangle"></i><br>Report Incident
-                        </a>
-                    </div>
-                    <div class="col-6">
-                        <a href="{{ url_for('safety_concerns.new_concern') }}" class="btn btn-outline-warning w-100 action-btn">
-                            <i class="bi bi-shield-exclamation"></i><br>Safety Concern
-                        </a>
-                    </div>
-                    <div class="col-6">
-                        <a href="{{ url_for('risk.risk_assessment') }}" class="btn btn-outline-info w-100 action-btn">
-                            <i class="bi bi-graph-up"></i><br>Risk Assessment
-                        </a>
-                    </div>
-                    <div class="col-6">
-                        <a href="{{ url_for('audits.new_audit') }}" class="btn btn-outline-primary w-100 action-btn">
-                            <i class="bi bi-clipboard-check"></i><br>Start Audit
-                        </a>
-                    </div>
-                    <div class="col-6">
-                        <a href="{{ url_for('sds.sds_list') }}" class="btn btn-outline-success w-100 action-btn">
-                            <i class="bi bi-file-earmark-text"></i><br>SDS Library
-                        </a>
-                    </div>
-                    <div class="col-6">
-                        <a href="{{ url_for('capa.new_capa') }}" class="btn btn-outline-secondary w-100 action-btn">
-                            <i class="bi bi-arrow-repeat"></i><br>Create CAPA
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Recent Activity & Notifications -->
-    <div class="col-md-6">
-        <div class="card h-100">
-            <div class="card-header bg-info text-white">
-                <h5 class="mb-0"><i class="bi bi-clock"></i> Recent Activity</h5>
-            </div>
-            <div class="card-body">
-                <div class="activity-feed" id="activityFeed">
-                    <!-- Populated by JavaScript -->
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Charts and Analytics Row -->
-<div class="row g-3 mb-4">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <h6><i class="bi bi-bar-chart"></i> Incident Trends (Last 6 Months)</h6>
-            </div>
-            <div class="card-body">
-                <canvas id="incidentTrendChart" height="200"></canvas>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <h6><i class="bi bi-pie-chart"></i> Risk Distribution</h6>
-            </div>
-            <div class="card-body">
-                <canvas id="riskDistributionChart" height="200"></canvas>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- AI Assistant Modal -->
-<div class="modal fade" id="chatModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="bi bi-robot text-primary"></i> EHS Assistant
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-0">
-                <iframe src="/chat" style="width: 100%; height: 500px; border: none;"></iframe>
-            </div>
-        </div>
-    </div>
-</div>
-
-<style>
-.stat-card {
-    transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.stat-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 25px rgba(0,0,0,0.2);
-}
-
-.action-btn {
-    transition: all 0.2s;
-    min-height: 80px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-decoration: none;
-}
-
-.action-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-}
-
-.activity-item {
-    padding: 0.75rem;
-    border-left: 3px solid #e2e8f0;
-    margin-left: 0.5rem;
-    margin-bottom: 0.5rem;
-    transition: all 0.2s;
-}
-
-.activity-item:hover {
-    background-color: #f8fafc;
-    border-left-color: #3b82f6;
-}
-
-.card {
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    transition: box-shadow 0.2s;
-}
-
-.card:hover {
-    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-}
-
-.sla-alert {
-    animation: slideInDown 0.5s ease-out;
-}
-
-@keyframes slideInDown {
-    from {
-        transform: translateY(-100%);
-        opacity: 0;
-    }
-    to {
-        transform: translateY(0);
-        opacity: 1;
-    }
-}
-</style>
-
-<script>
-// Dashboard initialization and real-time updates
-document.addEventListener('DOMContentLoaded', function() {
-    loadRecentActivity();
-    loadSLAAlerts();
-    initializeCharts();
-    
-    // Refresh data every 5 minutes
-    setInterval(function() {
-        refreshDashboardData();
-    }, 300000);
-});
-
-function loadRecentActivity() {
-    fetch('/api/recent-activity')
-        .then(response => response.json())
-        .then(data => {
-            const activityFeed = document.getElementById('activityFeed');
-            activityFeed.innerHTML = '';
-            
-            data.activities.forEach(activity => {
-                const activityItem = document.createElement('div');
-                activityItem.className = 'activity-item';
-                activityItem.innerHTML = `
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div>
-                            <small class="text-muted">${activity.time_ago}</small><br>
-                            <strong>${activity.type}:</strong> ${activity.description}
-                            ${activity.priority ? `<span class="badge bg-${activity.priority === 'high' ? 'danger' : 'warning'} ms-2">${activity.priority}</span>` : ''}
-                        </div>
-                        <div>
-                            ${activity.url ? `<a href="${activity.url}" class="btn btn-sm btn-outline-primary">View</a>` : ''}
-                        </div>
-                    </div>
-                `;
-                activityFeed.appendChild(activityItem);
-            });
-        })
-        .catch(error => {
-            console.error('Error loading recent activity:', error);
-            document.getElementById('activityFeed').innerHTML = '<p class="text-muted">Unable to load recent activity</p>';
-        });
-}
-
-function loadSLAAlerts() {
-    fetch('/api/notifications')
-        .then(response => response.json())
-        .then(data => {
-            const alertsContainer = document.getElementById('slaAlerts');
-            alertsContainer.innerHTML = '';
-            
-            if (data.length > 0) {
-                data.forEach(alert => {
-                    const alertDiv = document.createElement('div');
-                    alertDiv.className = 'alert alert-warning alert-dismissible fade show sla-alert';
-                    alertDiv.innerHTML = `
-                        <div class="d-flex align-items-center">
-                            <i class="bi bi-exclamation-triangle me-2"></i>
-                            <strong>${alert.type}:</strong> ${alert.title || alert.id}
-                            ${alert.days_overdue ? ` (${alert.days_overdue} days overdue)` : ''}
-                            ${alert.hours_overdue ? ` (${alert.hours_overdue} hours overdue)` : ''}
-                            <a href="${alert.url}" class="btn btn-sm btn-outline-dark ms-auto">Review</a>
-                        </div>
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    `;
-                    alertsContainer.appendChild(alertDiv);
-                });
-            }
-        })
-        .catch(error => console.error('Error loading SLA alerts:', error));
-}
-
-function initializeCharts() {
-    // Incident Trend Chart
-    const incidentCtx = document.getElementById('incidentTrendChart');
-    if (incidentCtx) {
-        new Chart(incidentCtx, {
-            type: 'line',
-            data: {
-                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-                datasets: [{
-                    label: 'Incidents',
-                    data: [2, 3, 1, 4, 2, 3],
-                    borderColor: '#dc3545',
-                    backgroundColor: 'rgba(220, 53, 69, 0.1)',
-                    tension: 0.4
-                }, {
-                    label: 'Near Misses',
-                    data: [5, 7, 4, 8, 6, 9],
-                    borderColor: '#ffc107',
-                    backgroundColor: 'rgba(255, 193, 7, 0.1)',
-                    tension: 0.4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {
-                        beginAtZero: true
-                    }
-                }
-            }
-        });
-    }
-
-    // Risk Distribution Chart
-    const riskCtx = document.getElementById('riskDistributionChart');
-    if (riskCtx) {
-        new Chart(riskCtx, {
-            type: 'doughnut',
-            data: {
-                labels: ['Low', 'Medium', 'High', 'Critical'],
-                datasets: [{
-                    data: [45, 30, 20, 5],
-                    backgroundColor: [
-                        '#28a745',
-                        '#ffc107', 
-                        '#fd7e14',
-                        '#dc3545'
-                    ]
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'bottom'
-                    }
-                }
-            }
-        });
-    }
-}
-
-function refreshDashboardData() {
-    fetch('/api/stats')
-        .then(response => response.json())
-        .then(data => {
-            document.getElementById('totalIncidents').textContent = data.incidents?.total || 0;
-            document.getElementById('overdueCapas').textContent = data.capas?.overdue || 0;
-            document.getElementById('avgAuditScore').textContent = (data.audits?.avg_score || 0) + '%';
-            document.getElementById('safetyConcerns').textContent = data.safety_concerns?.total || 0;
-            document.getElementById('highRisks').textContent = data.risk_assessments?.high_risk || 0;
-            document.getElementById('sdsCount').textContent = data.sds?.total || 0;
-        })
-        .catch(error => console.error('Error refreshing dashboard data:', error));
-    
-    loadRecentActivity();
-    loadSLAAlerts();
-}
-</script>
-{% endblock %}
-
-<!-- templates/safety_concern_new.html - Enhanced Safety Concern Form -->
-{% extends "base.html" %}
-{% block content %}
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-md-8 mx-auto">
-            <h3 class="mb-4">
-                <i class="bi bi-shield-exclamation text-warning"></i> 
-                Safety Concern Report (OSCR)
-            </h3>
-
-            <div class="alert alert-info">
-                <div class="d-flex align-items-center">
-                    <i class="bi bi-shield-check fs-4 me-3"></i>
-                    <div>
-                        <h6 class="mb-1">Your Safety Matters</h6>
-                        <p class="mb-0">Thank you for speaking up! Every safety observation helps create a safer workplace for everyone. All reports are taken seriously and handled confidentially.</p>
-                    </div>
-                </div>
-            </div>
-
-            <form method="post" class="card shadow">
-                <div class="card-header bg-warning text-dark">
-                    <h5 class="mb-0"><i class="bi bi-clipboard"></i> Report Details</h5>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Report Type <span class="text-danger">*</span></label>
-                                <select class="form-select" name="type" required>
-                                    <option value="">Select type</option>
-                                    <option value="concern" {{ 'selected' if concern_type == 'concern' }}>Safety Concern/Observation</option>
-                                    <option value="recognition" {{ 'selected' if concern_type == 'recognition' }}>Safety Recognition</option>
-                                    <option value="near_miss">Near Miss</option>
-                                    <option value="unsafe_behavior">Unsafe Behavior</option>
-                                    <option value="suggestion">Safety Suggestion</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Location <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" name="location" required 
-                                       placeholder="Building, area, or specific location">
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Title/Summary <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" name="title" required 
-                               placeholder="Brief description of the concern">
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Detailed Description <span class="text-danger">*</span></label>
-                        <textarea class="form-control" name="description" rows="4" required 
-                                  placeholder="Describe what you observed, including who, what, when, where, and how"></textarea>
-                    </div>
-                    
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Hazard Type</label>
-                                <select class="form-select" name="hazard_type">
-                                    <option value="">Select hazard type</option>
-                                    <option value="slip_trip_fall">Slip/Trip/Fall</option>
-                                    <option value="chemical">Chemical Exposure</option>
-                                    <option value="equipment">Equipment/Machinery</option>
-                                    <option value="ergonomic">Ergonomic</option>
-                                    <option value="electrical">Electrical</option>
-                                    <option value="fire">Fire/Explosion</option>
-                                    <option value="environmental">Environmental</option>
-                                    <option value="security">Security</option>
-                                    <option value="behavioral">Unsafe Behavior</option>
-                                    <option value="other">Other</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Risk Level (Initial Assessment)</label>
-                                <select class="form-select" name="risk_level">
-                                    <option value="low">Low - Minor concern</option>
-                                    <option value="medium" selected>Medium - Moderate concern</option>
-                                    <option value="high">High - Serious concern</option>
-                                    <option value="critical">Critical - Immediate danger</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Immediate Action Taken</label>
-                        <textarea class="form-control" name="immediate_action" rows="2" 
-                                  placeholder="What immediate steps were taken to address the concern?"></textarea>
-                    </div>
-                    
-                    <div class="mb-4">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="anonymous" id="anonymous">
-                            <label class="form-check-label" for="anonymous">
-                                <strong>Submit anonymously</strong>
-                            </label>
-                            <div class="form-text">
-                                If you submit anonymously, you won't receive updates on the resolution, 
-                                but your concern will still be investigated promptly.
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div id="reporter-info">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label">Your Name</label>
-                                    <input type="text" class="form-control" name="reporter">
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label">Email (for updates)</label>
-                                    <input type="email" class="form-control" name="reporter_email">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="card-footer">
-                    <div class="d-flex justify-content-between">
-                        <a href="{{ url_for('safety_concerns.concerns_list') }}" class="btn btn-secondary">
-                            <i class="bi bi-arrow-left"></i> Cancel
-                        </a>
-                        <button type="submit" class="btn btn-warning">
-                            <i class="bi bi-send"></i> Submit Safety Concern
-                        </button>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<script>
-document.getElementById('anonymous').addEventListener('change', function() {
-    const reporterInfo = document.getElementById('reporter-info');
-    const nameInput = document.querySelector('input[name="reporter"]');
-    const emailInput = document.querySelector('input[name="reporter_email"]');
-    
-    if (this.checked) {
-        reporterInfo.style.display = 'none';
-        nameInput.removeAttribute('required');
-        emailInput.removeAttribute('required');
-    } else {
-        reporterInfo.style.display = 'block';
-        nameInput.setAttribute('required', '');
-        emailInput.setAttribute('required', '');
-    }
-});
-</script>
-{% endblock %}
-
-<!-- templates/risk_assessment.html - Enhanced Risk Assessment -->
-{% extends "base.html" %}
-{% block content %}
-<div class="container-fluid">
-    <h3 class="mb-4">
-        <i class="bi bi-graph-up text-info"></i> 
-        Event Risk Classification (ERC)
-    </h3>
-
-    <div class="row">
-        <div class="col-md-8">
-            <form method="post" class="card shadow">
-                <div class="card-header bg-info text-white">
-                    <h5 class="mb-0"><i class="bi bi-calculator"></i> Risk Assessment</h5>
-                </div>
-                <div class="card-body">
-                    <div class="mb-3">
-                        <label class="form-label">Risk Title <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" name="title" required
-                               placeholder="Brief description of the risk scenario">
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Description</label>
-                        <textarea class="form-control" name="description" rows="3"
-                                  placeholder="Detailed description of the risk scenario and potential consequences"></textarea>
-                    </div>
-                    
-                    <div class="mb-4">
-                        <h5 class="text-primary">
-                            <i class="bi bi-speedometer2"></i> Likelihood Assessment
-                        </h5>
-                        <p class="text-muted">How likely is this event to occur?</p>
-                        <div class="row">
-                            {% for score, info in likelihood_scale.items() %}
-                            <div class="col-md-6 mb-3">
-                                <div class="form-check likelihood-option">
-                                    <input class="form-check-input" type="radio" name="likelihood" 
-                                           value="{{ score }}" id="likelihood{{ score }}" required>
-                                    <label class="form-check-label w-100" for="likelihood{{ score }}">
-                                        <div class="d-flex justify-content-between align-items-start">
-                                            <div>
-                                                <strong>{{ score }}: {{ info.label }}</strong><br>
-                                                <small class="text-muted">{{ info.description }}</small>
-                                            </div>
-                                            <span class="badge bg-primary">{{ score }}</span>
-                                        </div>
-                                    </label>
-                                </div>
-                            </div>
-                            {% endfor %}
-                        </div>
-                    </div>
-                    
-                    <div class="mb-4">
-                        <h5 class="text-danger">
-                            <i class="bi bi-exclamation-triangle"></i> Severity Assessment
-                        </h5>
-                        <p class="text-muted">Rate the potential impact in each category:</p>
-                        
-                        {% for category, severities in severity_scale.items() %}
-                        <div class="mb-4">
-                            <h6 class="text-capitalize">
-                                <i class="bi bi-{{ 'person' if category == 'people' else 
-                                                  ('tree' if category == 'environment' else
-                                                  ('currency-dollar' if category == 'cost' else
-                                                  ('megaphone' if category == 'reputation' else 'shield-check'))) }}"></i>
-                                {{ category.replace('_', ' ').title() }}
-                            </h6>
-                            <select class="form-select severity-select" name="severity_{{ category }}" required>
-                                <option value="">Select severity level</option>
-                                {% for score, description in severities.items() %}
-                                <option value="{{ score }}">{{ score }}: {{ description }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        {% endfor %}
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Created By</label>
-                        <input type="text" class="form-control" name="created_by" value="Current User">
-                    </div>
-                </div>
-                
-                <div class="card-footer">
-                    <div class="d-flex justify-content-between">
-                        <a href="{{ url_for('risk.risk_register') }}" class="btn btn-secondary">
-                            <i class="bi bi-arrow-left"></i> Back to Register
-                        </a>
-                        <button type="submit" class="btn btn-info">
-                            <i class="bi bi-calculator"></i> Calculate Risk Score
-                        </button>
-                    </div>
-                </div>
-            </form>
-        </div>
-        
-        <div class="col-md-4">
-            <div class="card shadow">
-                <div class="card-header bg-secondary text-white">
-                    <h6 class="mb-0"><i class="bi bi-info-circle"></i> Risk Matrix Guide</h6>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-sm">
-                            <thead>
-                                <tr>
-                                    <th>Score Range</th>
-                                    <th>Risk Level</th>
-                                    <th>Action Required</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr class="table-danger">
-                                    <td>80-100</td>
-                                    <td><strong>Critical</strong></td>
-                                    <td>Immediate action</td>
-                                </tr>
-                                <tr class="table-warning">
-                                    <td>60-79</td>
-                                    <td><strong>High</strong></td>
-                                    <td>Priority action</td>
-                                </tr>
-                                <tr class="table-info">
-                                    <td>40-59</td>
-                                    <td><strong>Medium</strong></td>
-                                    <td>Planned action</td>
-                                </tr>
-                                <tr class="table-success">
-                                    <td>20-39</td>
-                                    <td><strong>Low</strong></td>
-                                    <td>Monitor</td>
-                                </tr>
-                                <tr class="table-light">
-                                    <td>0-19</td>
-                                    <td><strong>Very Low</strong></td>
-                                    <td>Accept risk</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    
-                    <div class="mt-3">
-                        <h6>Assessment Tips</h6>
-                        <ul class="small">
-                            <li>Consider existing controls and safeguards</li>
-                            <li>Use historical data when available</li>
-                            <li>Involve subject matter experts</li>
-                            <li>Document all assumptions</li>
-                            <li>Review assessments annually</li>
-                        </ul>
-                    </div>
-                    
-                    <div class="mt-3">
-                        <h6>3D Risk Matrix</h6>
-                        <p class="small">Risk Score = Likelihood × Maximum Severity</p>
-                        <p class="small text-muted">The highest severity score across all categories is used for calculation.</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<style>
-.likelihood-option {
-    border: 2px solid #e9ecef;
-    border-radius: 8px;
-    padding: 1rem;
-    margin-bottom: 0.5rem;
-    transition: all 0.2s;
-}
-
-.likelihood-option:hover {
-    border-color: #007bff;
-    background-color: #f8f9fa;
-}
-
-.likelihood-option input:checked + label {
-    color: #007bff;
-    font-weight: bold;
-}
-
-.severity-select {
-    transition: border-color 0.2s;
-}
-
-.severity-select:focus {
-    border-color: #dc3545;
-    box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
-}
-</style>
-
-<script>
-// Real-time risk calculation preview
-document.addEventListener('DOMContentLoaded', function() {
-    const likelihoodInputs = document.querySelectorAll('input[name="likelihood"]');
-    const severitySelects = document.querySelectorAll('.severity-select');
-    
-    function updateRiskPreview() {
-        const likelihood = document.querySelector('input[name="likelihood"]:checked')?.value || 0;
-        const severities = Array.from(severitySelects).map(select => parseInt(select.value) || 0);
-        const maxSeverity = Math.max(...severities);
-        const riskScore = likelihood * maxSeverity;
-        
-        let riskLevel = 'Very Low';
-        if (riskScore >= 80) riskLevel = 'Critical';
-        else if (riskScore >= 60) riskLevel = 'High';
-        else if (riskScore >= 40) riskLevel = 'Medium';
-        else if (riskScore >= 20) riskLevel = 'Low';
-        
-        // Update preview if elements exist
-        const previewElement = document.getElementById('risk-preview');
-        if (previewElement) {
-            previewElement.innerHTML = `
-                <strong>Preview:</strong> Risk Score: ${riskScore} (${riskLevel})
-            `;
+<!-- templates/enhanced_dashboard.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart EHS Management System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --secondary-color: #64748b;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --danger-color: #ef4444;
+            --info-color: #06b6d4;
         }
-    }
-    
-    likelihoodInputs.forEach(input => {
-        input.addEventListener('change', updateRiskPreview);
-    });
-    
-    severitySelects.forEach(select => {
-        select.addEventListener('change', updateRiskPreview);
-    });
-});
-</script>
-{% endblock %}
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .main-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .header {
+            background: linear-gradient(135deg, var(--primary-color), #3b82f6);
+            color: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+
+        .nav-pills {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 0.5rem;
+            border-radius: 2rem;
+            margin-top: 1rem;
+        }
+
+        .nav-pills .nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            border-radius: 1.5rem;
+            padding: 0.75rem 1.5rem;
+            transition: all 0.3s;
+            margin: 0 0.25rem;
+        }
+
+        .nav-pills .nav-link:hover,
+        .nav-pills .nav-link.active {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transition: all 0.3s;
+            border: none;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            color: #6b7280;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .quick-action-card {
+            background: white;
+            border-radius: 1rem;
+            padding: 1rem;
+            text-align: center;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+
+        .quick-action-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .quick-action-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1rem;
+            font-size: 1.5rem;
+            color: white;
+        }
+
+        .chatbot-widget {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .chatbot-toggle {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--primary-color), #3b82f6);
+            border: none;
+            border-radius: 50%;
+            color: white;
+            font-size: 1.5rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: all 0.3s;
+        }
+
+        .chatbot-toggle:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+        }
+
+        .chatbot-panel {
+            position: absolute;
+            bottom: 80px;
+            right: 0;
+            width: 400px;
+            height: 600px;
+            background: white;
+            border-radius: 1rem;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chatbot-header {
+            background: linear-gradient(135deg, var(--primary-color), #3b82f6);
+            color: white;
+            padding: 1rem;
+            display: flex;
+            justify-content: between;
+            align-items: center;
+        }
+
+        .chatbot-messages {
+            flex: 1;
+            padding: 1rem;
+            overflow-y: auto;
+            background: #f8fafc;
+        }
+
+        .chatbot-input {
+            padding: 1rem;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .message {
+            margin-bottom: 1rem;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .message-user {
+            text-align: right;
+        }
+
+        .message-bot {
+            text-align: left;
+        }
+
+        .message-bubble {
+            display: inline-block;
+            max-width: 80%;
+            padding: 0.75rem 1rem;
+            border-radius: 1rem;
+            word-wrap: break-word;
+        }
+
+        .message-user .message-bubble {
+            background: var(--primary-color);
+            color: white;
+            border-bottom-right-radius: 0.25rem;
+        }
+
+        .message-bot .message-bubble {
+            background: white;
+            color: #334155;
+            border: 1px solid #e2e8f0;
+            border-bottom-left-radius: 0.25rem;
+        }
+
+        .action-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+
+        .action-btn {
+            background: rgba(37, 99, 235, 0.1);
+            border: 1px solid var(--primary-color);
+            color: var(--primary-color);
+            padding: 0.5rem 1rem;
+            border-radius: 1rem;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+
+        .action-btn:hover {
+            background: var(--primary-color);
+            color: white;
+            transform: translateY(-1px);
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (max-width: 768px) {
+            .main-container {
+                padding: 1rem;
+            }
+            
+            .chatbot-panel {
+                width: 320px;
+                height: 500px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="mb-0">
+                        <i class="bi bi-shield-check me-3"></i>Smart EHS Management System
+                    </h1>
+                    <p class="mb-0 mt-2 opacity-75">Intelligent Environmental, Health & Safety Management</p>
+                </div>
+                <div class="text-end">
+                    <div class="badge bg-success fs-6 mb-2">System Online</div>
+                    <br>
+                    <small class="opacity-75">{{ moment().format('MMMM DD, YYYY') }}</small>
+                </div>
+            </div>
+            
+            <!-- Navigation Pills -->
+            <ul class="nav nav-pills nav-fill">
+                <li class="nav-item">
+                    <a class="nav-link active" href="#dashboard">
+                        <i class="bi bi-house me-2"></i>Dashboard
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/incidents">
+                        <i class="bi bi-exclamation-triangle me-2"></i>Incidents
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/safety-concerns">
+                        <i class="bi bi-shield-exclamation me-2"></i>Safety Concerns
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/capa">
+                        <i class="bi bi-arrow-repeat me-2"></i>CAPAs
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/risk/register">
+                        <i class="bi bi-graph-up me-2"></i>Risk Register
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/audits">
+                        <i class="bi bi-clipboard-check me-2"></i>Audits
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/sds">
+                        <i class="bi bi-file-earmark-text me-2"></i>SDS Library
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Quick Stats -->
+        <div class="row mb-4">
+            <div class="col-md-2">
+                <div class="stat-card text-center">
+                    <div class="stat-number text-primary">{{ stats.incidents.total|default(0) }}</div>
+                    <div class="stat-label">Total Incidents</div>
+                    <small class="text-muted">{{ stats.incidents.open|default(0) }} Open</small>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="stat-card text-center">
+                    <div class="stat-number text-warning">{{ stats.capas.overdue|default(0) }}</div>
+                    <div class="stat-label">Overdue CAPAs</div>
+                    <small class="text-muted">{{ stats.capas.total|default(0) }} Total</small>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="stat-card text-center">
+                    <div class="stat-number text-success">{{ stats.audits.avg_score|default(0) }}%</div>
+                    <div class="stat-label">Avg Audit Score</div>
+                    <small class="text-muted">{{ stats.audits.completed|default(0) }} Completed</small>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="stat-card text-center">
+                    <div class="stat-number text-info">{{ stats.safety_concerns.total|default(0) }}</div>
+                    <div class="stat-label">Safety Concerns</div>
+                    <small class="text-muted">{{ stats.safety_concerns.open|default(0) }} Open</small>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="stat-card text-center">
+                    <div class="stat-number text-danger">{{ stats.risk_assessments.high_risk|default(0) }}</div>
+                    <div class="stat-label">High Risk Items</div>
+                    <small class="text-muted">{{ stats.risk_assessments.total|default(0) }} Total</small>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="stat-card text-center">
+                    <div class="stat-number text-secondary">{{ stats.sds.total|default(0) }}</div>
+                    <div class="stat-label">SDS Library</div>
+                    <small class="text-muted">Searchable</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h4 class="mb-3">
+                    <i class="bi bi-lightning text-warning me-2"></i>Quick Actions
+                </h4>
+            </div>
+            <div class="col-md-2">
+                <a href="/incidents/new" class="quick-action-card">
+                    <div class="quick-action-icon bg-danger">
+                        <i class="bi bi-exclamation-triangle"></i>
+                    </div>
+                    <h6>Report Incident</h6>
+                    <p class="small text-muted mb-0">Report workplace incidents</p>
+                </a>
+            </div>
+            <div class="col-md-2">
+                <a href="/safety-concerns/new" class="quick-action-card">
+                    <div class="quick-action-icon bg-warning">
+                        <i class="bi bi-shield-exclamation"></i>
+                    </div>
+                    <h6>Safety Concern</h6>
+                    <p class="small text-muted mb-0">Submit safety observations</p>
+                </a>
+            </div>
+            <div class="col-md-2">
+                <a href="/risk/assess" class="quick-action-card">
+                    <div class="quick-action-icon bg-info">
+                        <i class="bi bi-graph-up"></i>
+                    </div>
+                    <h6>Risk Assessment</h6>
+                    <p class="small text-muted mb-0">Evaluate workplace risks</p>
+                </a>
+            </div>
+            <div class="col-md-2">
+                <a href="/audits/new" class="quick-action-card">
+                    <div class="quick-action-icon bg-primary">
+                        <i class="bi bi-clipboard-check"></i>
+                    </div>
+                    <h6>Start Audit</h6>
+                    <p class="small text-muted mb-0">Conduct safety audits</p>
+                </a>
+            </div>
+            <div class="col-md-2">
+                <a href="/sds/upload" class="quick-action-card">
+                    <div class="quick-action-icon bg-success">
+                        <i class="bi bi-upload"></i>
+                    </div>
+                    <h6>Upload SDS</h6>
+                    <p class="small text-muted mb-0">Add safety data sheets</p>
+                </a>
+            </div>
+            <div class="col-md-2">
+                <a href="/capa/new" class="quick-action-card">
+                    <div class="quick-action-icon bg-secondary">
+                        <i class="bi bi-arrow-repeat"></i>
+                    </div>
+                    <h6>Create CAPA</h6>
+                    <p class="small text-muted mb-0">Corrective actions</p>
+                </a>
+            </div>
+        </div>
+
+        <!-- Recent Activity and Alerts -->
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="bi bi-clock me-2"></i>Recent Activity
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="recentActivity">
+                            <div class="text-center py-4">
+                                <div class="spinner-border text-primary"></div>
+                                <p class="mt-2 text-muted">Loading recent activity...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header bg-warning text-dark">
+                        <h5 class="mb-0">
+                            <i class="bi bi-bell me-2"></i>Alerts & Notifications
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="alertsContainer">
+                            <div class="text-center py-4">
+                                <div class="spinner-border text-warning"></div>
+                                <p class="mt-2 text-muted">Loading alerts...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating Chatbot Widget -->
+    <div class="chatbot-widget">
+        <div class="chatbot-panel" id="chatbotPanel">
+            <div class="chatbot-header">
+                <h6 class="mb-0">
+                    <i class="bi bi-robot me-2"></i>EHS Assistant
+                </h6>
+                <button class="btn btn-sm btn-outline-light" onclick="toggleChatbot()">
+                    <i class="bi bi-x"></i>
+                </button>
+            </div>
+            <div class="chatbot-messages" id="chatbotMessages">
+                <!-- Welcome message -->
+                <div class="message message-bot">
+                    <div class="message-bubble">
+                        <strong>👋 Hello! I'm your Smart EHS Assistant.</strong><br><br>
+                        I can help you with:
+                        <div class="action-buttons">
+                            <button class="action-btn" onclick="sendChatMessage('Report an incident')">🚨 Report Incident</button>
+                            <button class="action-btn" onclick="sendChatMessage('Safety concern')">🛡️ Safety Concern</button>
+                            <button class="action-btn" onclick="sendChatMessage('Find SDS')">📋 Find SDS</button>
+                            <button class="action-btn" onclick="sendChatMessage('Risk assessment')">📊 Risk Assessment</button>
+                            <button class="action-btn" onclick="sendChatMessage('Help me')">❓ Help</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="chatbot-input">
+                <div class="input-group">
+                    <input type="text" class="form-control" id="chatInput" placeholder="Ask me anything about EHS..." onkeypress="handleChatKeyPress(event)">
+                    <button class="btn btn-primary" onclick="sendChatMessage()">
+                        <i class="bi bi-send"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <button class="chatbot-toggle" onclick="toggleChatbot()" id="chatbotToggle">
+            <i class="bi bi-robot"></i>
+        </button>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+
+    <script>
+        // Chatbot state management
+        let chatHistory = [];
+        let chatbotOpen = false;
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            loadRecentActivity();
+            loadAlerts();
+            
+            // Auto-refresh every 5 minutes
+            setInterval(function() {
+                loadRecentActivity();
+                loadAlerts();
+            }, 300000);
+        });
+
+        // Chatbot functions
+        function toggleChatbot() {
+            const panel = document.getElementById('chatbotPanel');
+            const toggle = document.getElementById('chatbotToggle');
+            
+            chatbotOpen = !chatbotOpen;
+            
+            if (chatbotOpen) {
+                panel.style.display = 'flex';
+                toggle.innerHTML = '<i class="bi bi-x"></i>';
+                document.getElementById('chatInput').focus();
+            } else {
+                panel.style.display = 'none';
+                toggle.innerHTML = '<i class="bi bi-robot"></i>';
+            }
+        }
+
+        function handleChatKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendChatMessage();
+            }
+        }
+
+        function sendChatMessage(message) {
+            const input = document.getElementById('chatInput');
+            const userMessage = message || input.value.trim();
+            
+            if (!userMessage) return;
+            
+            // Add user message to chat
+            addChatMessage(userMessage, 'user');
+            
+            // Clear input if it was typed
+            if (!message) {
+                input.value = '';
+            }
+            
+            // Show typing indicator
+            showTypingIndicator();
+            
+            // Send to chatbot API
+            fetch('/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    message: userMessage,
+                    user_id: 'dashboard_user',
+                    context: {
+                        page: 'dashboard',
+                        timestamp: new Date().toISOString()
+                    }
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                hideTypingIndicator();
+                addChatMessage(data.message, 'bot', data);
+                
+                // Store conversation in history
+                chatHistory.push({
+                    user: userMessage,
+                    bot: data.message,
+                    timestamp: new Date().toISOString()
+                });
+            })
+            .catch(error => {
+                hideTypingIndicator();
+                addChatMessage("I'm sorry, I'm having trouble connecting right now. Please try again.", 'bot');
+                console.error('Chat error:', error);
+            });
+        }
+
+        function addChatMessage(message, sender, data = null) {
+            const messagesContainer = document.getElementById('chatbotMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message message-${sender}`;
+            
+            let messageContent = `<div class="message-bubble">${message}`;
+            
+            // Add action buttons if provided
+            if (data && data.actions) {
+                messageContent += '<div class="action-buttons">';
+                data.actions.forEach(action => {
+                    if (action.action === 'navigate') {
+                        messageContent += `<a href="${action.url}" class="action-btn">${action.text}</a>`;
+                    } else {
+                        messageContent += `<button class="action-btn" onclick="sendChatMessage('${action.text}')">${action.text}</button>`;
+                    }
+                });
+                messageContent += '</div>';
+            }
+            
+            // Add quick replies if provided
+            if (data && data.quick_replies) {
+                messageContent += '<div class="action-buttons">';
+                data.quick_replies.forEach(reply => {
+                    messageContent += `<button class="action-btn" onclick="sendChatMessage('${reply}')">${reply}</button>`;
+                });
+                messageContent += '</div>';
+            }
+            
+            messageContent += '</div>';
+            messageDiv.innerHTML = messageContent;
+            
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function showTypingIndicator() {
+            const messagesContainer = document.getElementById('chatbotMessages');
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'message message-bot';
+            typingDiv.id = 'typingIndicator';
+            typingDiv.innerHTML = `
+                <div class="message-bubble">
+                    <div class="typing-dots">
+                        <span></span><span></span><span></span>
+                    </div>
+                </div>
+            `;
+            messagesContainer.appendChild(typingDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function hideTypingIndicator() {
+            const typingIndicator = document.getElementById('typingIndicator');
+            if (typingIndicator) {
+                typingIndicator.remove();
+            }
+        }
+
+        function loadRecentActivity() {
+            fetch('/api/recent-activity')
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('recentActivity');
+                    
+                    if (data.activities && data.activities.length > 0) {
+                        container.innerHTML = data.activities.slice(0, 5).map(activity => `
+                            <div class="d-flex justify-content-between align-items-start mb-3 p-3 bg-light rounded">
+                                <div>
+                                    <strong>${activity.type}:</strong> ${activity.description}
+                                    <br><small class="text-muted">${activity.time_ago}</small>
+                                </div>
+                                <div>
+                                    ${activity.url ? `<a href="${activity.url}" class="btn btn-sm btn-outline-primary">View</a>` : ''}
+                                </div>
+                            </div>
+                        `).join('');
+                    } else {
+                        container.innerHTML = '<p class="text-muted text-center py-4">No recent activity</p>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading recent activity:', error);
+                    document.getElementById('recentActivity').innerHTML = '<p class="text-danger text-center py-4">Unable to load recent activity</p>';
+                });
+        }
+
+        function loadAlerts() {
+            fetch('/api/notifications')
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('alertsContainer');
+                    
+                    if (data.length > 0) {
+                        container.innerHTML = data.slice(0, 5).map(alert => `
+                            <div class="alert alert-${alert.priority === 'critical' ? 'danger' : 'warning'} mb-2">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <strong>${alert.type}</strong><br>
+                                        <small>${alert.title || alert.id}</small>
+                                        ${alert.days_overdue ? `<br><span class="badge bg-danger">${alert.days_overdue} days overdue</span>` : ''}
+                                    </div>
+                                    <a href="${alert.url}" class="btn btn-sm btn-outline-dark">View</a>
+                                </div>
+                            </div>
+                        `).join('');
+                    } else {
+                        container.innerHTML = '<div class="alert alert-success">✅ No active alerts</div>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading alerts:', error);
+                    document.getElementById('alertsContainer').innerHTML = '<div class="alert alert-danger">Unable to load alerts</div>';
+                });
+        }
+
+        // CSS for typing indicator
+        const style = document.createElement('style');
+        style.textContent = `
+            .typing-dots {
+                display: flex;
+                gap: 4px;
+            }
+            .typing-dots span {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: #6b7280;
+                animation: typing 1.4s infinite ease-in-out;
+            }
+            .typing-dots span:nth-child(1) { animation-delay: -0.32s; }
+            .typing-dots span:nth-child(2) { animation-delay: -0.16s; }
+            @keyframes typing {
+                0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
+                40% { transform: scale(1); opacity: 1; }
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>
