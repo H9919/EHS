@@ -384,4 +384,452 @@ def create_app():
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev")
     
     # Register all blueprints
-    app.register_blueprint(sds_bp, url_prefix="/
+    app.register_blueprint(sds_bp, url_prefix="/sds")
+    app.register_blueprint(incidents_bp, url_prefix="/incidents")
+    app.register_blueprint(chatbot_bp, url_prefix="/")
+    app.register_blueprint(capa_bp, url_prefix="/capa")
+    app.register_blueprint(risk_bp, url_prefix="/risk")
+    app.register_blueprint(safety_concerns_bp, url_prefix="/safety-concerns")
+    app.register_blueprint(audits_bp, url_prefix="/audits")
+
+    @app.route("/")
+    def index():
+        # Enhanced dashboard with AI chatbot integration
+        return render_template("enhanced_dashboard.html")
+
+    @app.route("/dashboard")
+    def dashboard():
+        # Get summary statistics for dashboard
+        from services.dashboard_stats import get_dashboard_statistics
+        stats = get_dashboard_statistics()
+        return render_template("dashboard_with_stats.html", stats=stats)
+
+    return app
+
+# services/dashboard_stats.py - Dashboard Statistics
+def get_dashboard_statistics():
+    """Get comprehensive dashboard statistics"""
+    from pathlib import Path
+    import json
+    
+    stats = {
+        "incidents": {"total": 0, "open": 0, "this_month": 0},
+        "safety_concerns": {"total": 0, "open": 0, "this_month": 0},
+        "capas": {"total": 0, "overdue": 0, "completed": 0},
+        "audits": {"scheduled": 0, "completed": 0, "avg_score": 0},
+        "sds": {"total": 0, "updated_this_month": 0},
+        "risk_assessments": {"high_risk": 0, "total": 0}
+    }
+    
+    # Load incidents
+    incidents_file = Path("data/incidents.json")
+    if incidents_file.exists():
+        incidents = json.loads(incidents_file.read_text())
+        stats["incidents"]["total"] = len(incidents)
+        stats["incidents"]["open"] = len([i for i in incidents.values() 
+                                        if i.get("status") != "complete"])
+    
+    # Load safety concerns
+    concerns_file = Path("data/safety_concerns.json")
+    if concerns_file.exists():
+        concerns = json.loads(concerns_file.read_text())
+        stats["safety_concerns"]["total"] = len(concerns)
+        stats["safety_concerns"]["open"] = len([c for c in concerns.values() 
+                                              if c.get("status") in ["reported", "in_progress"]])
+    
+    # Load CAPAs
+    capa_file = Path("data/capa.json")
+    if capa_file.exists():
+        capas = json.loads(capa_file.read_text())
+        stats["capas"]["total"] = len(capas)
+        stats["capas"]["completed"] = len([c for c in capas.values() 
+                                         if c.get("status") == "completed"])
+        # Calculate overdue (simplified)
+        from datetime import datetime
+        today = datetime.now().date()
+        overdue = 0
+        for capa in capas.values():
+            if capa.get("status") in ["open", "in_progress"]:
+                try:
+                    due_date = datetime.fromisoformat(capa.get("due_date", "")).date()
+                    if due_date < today:
+                        overdue += 1
+                except:
+                    pass
+        stats["capas"]["overdue"] = overdue
+    
+    # Load audits
+    audits_file = Path("data/audits.json")
+    if audits_file.exists():
+        audits = json.loads(audits_file.read_text())
+        stats["audits"]["scheduled"] = len([a for a in audits.values() 
+                                          if a.get("status") == "scheduled"])
+        completed_audits = [a for a in audits.values() 
+                           if a.get("status") == "completed"]
+        stats["audits"]["completed"] = len(completed_audits)
+        if completed_audits:
+            avg_score = sum(a.get("score", 0) for a in completed_audits) / len(completed_audits)
+            stats["audits"]["avg_score"] = round(avg_score, 1)
+    
+    # Load SDS
+    sds_file = Path("data/sds/index.json")
+    if sds_file.exists():
+        sds_index = json.loads(sds_file.read_text())
+        stats["sds"]["total"] = len(sds_index)
+    
+    # Load risk assessments
+    risk_file = Path("data/risk_assessments.json")
+    if risk_file.exists():
+        risks = json.loads(risk_file.read_text())
+        stats["risk_assessments"]["total"] = len(risks)
+        stats["risk_assessments"]["high_risk"] = len([r for r in risks.values() 
+                                                    if r.get("risk_level") in ["High", "Critical"]])
+    
+    return stats
+
+# services/notification_manager.py - SLA and Alert Management
+import json
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import List, Dict
+
+class NotificationManager:
+    def __init__(self):
+        self.data_dir = Path("data")
+        self.notifications_file = self.data_dir / "notifications.json"
+    
+    def check_sla_violations(self) -> List[Dict]:
+        """Check for SLA violations across all modules"""
+        violations = []
+        
+        # Check CAPA overdue items
+        violations.extend(self._check_capa_sla())
+        
+        # Check safety concern response times
+        violations.extend(self._check_safety_concern_sla())
+        
+        # Check incident investigation deadlines
+        violations.extend(self._check_incident_sla())
+        
+        # Check audit scheduling
+        violations.extend(self._check_audit_sla())
+        
+        return violations
+    
+    def _check_capa_sla(self) -> List[Dict]:
+        """Check CAPA SLA violations"""
+        violations = []
+        capa_file = self.data_dir / "capa.json"
+        
+        if not capa_file.exists():
+            return violations
+            
+        capas = json.loads(capa_file.read_text())
+        today = datetime.now().date()
+        
+        for capa in capas.values():
+            if capa.get("status") in ["open", "in_progress"]:
+                try:
+                    due_date = datetime.fromisoformat(capa.get("due_date", "")).date()
+                    if due_date < today:
+                        days_overdue = (today - due_date).days
+                        violations.append({
+                            "type": "CAPA Overdue",
+                            "id": capa["id"],
+                            "title": capa.get("title", ""),
+                            "assignee": capa.get("assignee", ""),
+                            "days_overdue": days_overdue,
+                            "priority": capa.get("priority", "medium"),
+                            "url": f"/capa/{capa['id']}"
+                        })
+                except:
+                    pass
+        
+        return violations
+    
+    def _check_safety_concern_sla(self) -> List[Dict]:
+        """Check safety concern response SLA"""
+        violations = []
+        concerns_file = self.data_dir / "safety_concerns.json"
+        
+        if not concerns_file.exists():
+            return violations
+            
+        concerns = json.loads(concerns_file.read_text())
+        
+        # SLA: 24 hours for initial response, 3 business days for triage
+        now = datetime.now()
+        
+        for concern in concerns.values():
+            created_date = datetime.fromtimestamp(concern.get("created_date", 0))
+            status = concern.get("status", "")
+            
+            # Check 24-hour response SLA
+            if status == "reported" and (now - created_date).total_seconds() > 24 * 3600:
+                violations.append({
+                    "type": "Safety Concern - No Response",
+                    "id": concern["id"],
+                    "title": concern.get("title", ""),
+                    "hours_overdue": int((now - created_date).total_seconds() / 3600 - 24),
+                    "priority": "high",
+                    "url": f"/safety-concerns/{concern['id']}"
+                })
+        
+        return violations
+    
+    def _check_incident_sla(self) -> List[Dict]:
+        """Check incident investigation SLA"""
+        violations = []
+        incidents_file = self.data_dir / "incidents.json"
+        
+        if not incidents_file.exists():
+            return violations
+            
+        incidents = json.loads(incidents_file.read_text())
+        
+        # SLA varies by incident type
+        sla_days = {
+            "injury": 7,
+            "environmental": 5,
+            "security": 3,
+            "vehicle": 7,
+            "other": 10
+        }
+        
+        now = datetime.now()
+        
+        for incident in incidents.values():
+            if incident.get("status") != "complete":
+                created_date = datetime.fromtimestamp(incident.get("created_ts", 0))
+                incident_type = incident.get("type", "other")
+                sla_deadline = created_date + timedelta(days=sla_days.get(incident_type, 10))
+                
+                if now > sla_deadline:
+                    days_overdue = (now - sla_deadline).days
+                    violations.append({
+                        "type": "Incident Investigation Overdue",
+                        "id": incident["id"],
+                        "incident_type": incident_type,
+                        "days_overdue": days_overdue,
+                        "priority": "high",
+                        "url": f"/incidents/{incident['id']}/edit"
+                    })
+        
+        return violations
+    
+    def _check_audit_sla(self) -> List[Dict]:
+        """Check audit scheduling SLA"""
+        violations = []
+        # Implementation would check for overdue scheduled audits
+        return violations
+    
+    def send_notifications(self, violations: List[Dict]):
+        """Send notifications for SLA violations"""
+        # This would integrate with email/Slack/etc.
+        # For now, just log to file
+        if violations:
+            notification_data = {
+                "timestamp": datetime.now().isoformat(),
+                "violations": violations
+            }
+            
+            self.data_dir.mkdir(exist_ok=True)
+            
+            # Load existing notifications
+            if self.notifications_file.exists():
+                notifications = json.loads(self.notifications_file.read_text())
+            else:
+                notifications = []
+            
+            notifications.append(notification_data)
+            
+            # Keep only last 100 notifications
+            notifications = notifications[-100:]
+            
+            self.notifications_file.write_text(json.dumps(notifications, indent=2))
+
+# Enhanced dashboard template content for templates/enhanced_dashboard.html
+ENHANCED_DASHBOARD_TEMPLATE = '''
+{% extends "base.html" %}
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <h2>Smart EHS Dashboard</h2>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#chatModal">
+                <i class="bi bi-robot"></i> Ask EHS Assistant
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Stats Row -->
+<div class="row g-3 mb-4">
+    <div class="col-md-2">
+        <div class="card bg-primary text-white">
+            <div class="card-body text-center">
+                <h3 class="mb-0">{{ stats.incidents.total|default(0) }}</h3>
+                <small>Total Incidents</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card bg-warning text-white">
+            <div class="card-body text-center">
+                <h3 class="mb-0">{{ stats.capas.overdue|default(0) }}</h3>
+                <small>Overdue CAPAs</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card bg-success text-white">
+            <div class="card-body text-center">
+                <h3 class="mb-0">{{ stats.audits.avg_score|default(0) }}%</h3>
+                <small>Avg Audit Score</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card bg-info text-white">
+            <div class="card-body text-center">
+                <h3 class="mb-0">{{ stats.safety_concerns.total|default(0) }}</h3>
+                <small>Safety Concerns</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card bg-danger text-white">
+            <div class="card-body text-center">
+                <h3 class="mb-0">{{ stats.risk_assessments.high_risk|default(0) }}</h3>
+                <small>High Risk Items</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card bg-secondary text-white">
+            <div class="card-body text-center">
+                <h3 class="mb-0">{{ stats.sds.total|default(0) }}</h3>
+                <small>SDS Library</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Content Row -->
+<div class="row g-3 mb-4">
+    <!-- Quick Actions -->
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5><i class="bi bi-lightning"></i> Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-2">
+                    <div class="col-6">
+                        <a href="{{ url_for('incidents.new_incident') }}" class="btn btn-outline-danger w-100">
+                            <i class="bi bi-exclamation-triangle"></i><br>Report Incident
+                        </a>
+                    </div>
+                    <div class="col-6">
+                        <a href="{{ url_for('safety_concerns.new_concern') }}" class="btn btn-outline-warning w-100">
+                            <i class="bi bi-shield-exclamation"></i><br>Safety Concern
+                        </a>
+                    </div>
+                    <div class="col-6">
+                        <a href="{{ url_for('risk.risk_assessment') }}" class="btn btn-outline-info w-100">
+                            <i class="bi bi-graph-up"></i><br>Risk Assessment
+                        </a>
+                    </div>
+                    <div class="col-6">
+                        <a href="{{ url_for('audits.new_audit') }}" class="btn btn-outline-primary w-100">
+                            <i class="bi bi-clipboard-check"></i><br>Start Audit
+                        </a>
+                    </div>
+                    <div class="col-6">
+                        <a href="{{ url_for('sds.sds_list') }}" class="btn btn-outline-success w-100">
+                            <i class="bi bi-file-earmark-text"></i><br>SDS Library
+                        </a>
+                    </div>
+                    <div class="col-6">
+                        <a href="{{ url_for('capa.new_capa') }}" class="btn btn-outline-secondary w-100">
+                            <i class="bi bi-arrow-repeat"></i><br>Create CAPA
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Recent Activity -->
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5><i class="bi bi-clock"></i> Recent Activity</h5>
+            </div>
+            <div class="card-body">
+                <div class="activity-feed">
+                    <!-- This would be populated with actual recent activities -->
+                    <div class="activity-item mb-2">
+                        <small class="text-muted">2 hours ago</small><br>
+                        <strong>New incident reported:</strong> Minor injury in Building A
+                    </div>
+                    <div class="activity-item mb-2">
+                        <small class="text-muted">1 day ago</small><br>
+                        <strong>CAPA completed:</strong> Emergency exit signage update
+                    </div>
+                    <div class="activity-item mb-2">
+                        <small class="text-muted">2 days ago</small><br>
+                        <strong>Audit completed:</strong> Chemical storage audit - 95% score
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- AI Assistant Modal -->
+<div class="modal fade" id="chatModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-robot"></i> EHS Assistant
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <iframe src="/chat" style="width: 100%; height: 500px; border: none;"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.activity-item {
+    padding: 0.5rem;
+    border-left: 3px solid #e2e8f0;
+    margin-left: 0.5rem;
+}
+
+.activity-item:hover {
+    background-color: #f8fafc;
+    border-left-color: #3b82f6;
+}
+
+.card {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    transition: box-shadow 0.2s;
+}
+
+.card:hover {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.btn-outline-danger:hover, .btn-outline-warning:hover,
+.btn-outline-info:hover, .btn-outline-primary:hover,
+.btn-outline-success:hover, .btn-outline-secondary:hover {
+    transform: translateY(-1px);
+}
+</style>
+{% endblock %}
+'''
