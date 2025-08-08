@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<h3 class="mb-3">Edit Incident <code>{{ rec.id }}</code></h3>
+<div class="mb-2">
+  <span class="badge bg-info">Completeness: {{ completeness }}%</span>
+  {% if ok %}
+    <span class="badge bg-success">Valid ✔</span>
+  {% else %}
+    <span class="badge bg-warning text-dark">Missing: {{ ", ".join(missing) }}</span>
+  {% endif %}
+</div>
+<form method="post" class="card p-3">
+  <div class="mb-3">
+    <label class="form-label">Incident Type</label>
+    <select class="form-select" name="type">
+      {% for t in required_by_type.keys() %}
+      <option value="{{ t }}" {% if rec.type==t %}selected{% endif %}>{{ t }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  {% for c in ["people","environment","cost","legal","reputation"] %}
+  <div class="mb-3">
+    <label class="form-label">{{ c|capitalize }}</label>
+    <textarea class="form-control" name="{{ c }}" rows="3">{{ rec.answers[c] }}</textarea>
+  </div>
+  {% endfor %}
+  <button class="btn btn-primary">Save & Validate</button>
+</form>
+{% endblock %}
