@@ -1,11 +1,14 @@
 import json
 import time
 from pathlib import Path
-from flask import Blueprint, request, render_template, redirect, url_for, flash
+from flask import Blueprint, request, render_template, redirect, url_for, flash, send_file, abort
 from services.incident_validator import REQUIRED_BY_TYPE, compute_completeness, validate_record
+from services.pdf import build_incident_pdf
 
 DATA_DIR = Path("data")
 INCIDENTS_JSON = DATA_DIR / "incidents.json"
+PDF_DIR = DATA_DIR / "pdf"
+
 incidents_bp = Blueprint("incidents", __name__, template_folder="../templates")
 
 def load_incidents():
@@ -66,7 +69,6 @@ def edit_incident(iid):
         rec["type"] = request.form.get("type") or rec["type"]
         for cat in ["people", "environment", "cost", "legal", "reputation"]:
             rec["answers"][cat] = request.form.get(cat) or rec["answers"].get(cat, "")
-        # Try validation
         ok, missing = validate_record(rec)
         rec["status"] = "complete" if ok else "incomplete"
         items[iid] = rec
@@ -84,3 +86,15 @@ def edit_incident(iid):
         rec=rec, completeness=completeness, ok=ok, missing=missing, required_by_type=REQUIRED_BY_TYPE
     )
 
+@incidents_bp.get("/<iid>/pdf")
+def download_incident_pdf(iid):
+    items = load_incidents()
+    rec = items.get(iid)
+    if not rec:
+        abort(404)
+    completeness = compute_completeness(rec)
+    ok, missing = validate_record(rec)
+    PDF_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = PDF_DIR / f"incident-{iid}.pdf"
+    build_incident_pdf(rec, completeness, ok, missing, str(out_path))
+    return send_file(out_path, as_attachment=True, download_name=f"incident-{iid}.pdf")
