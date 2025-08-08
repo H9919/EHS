@@ -84,30 +84,12 @@ def create_app():
 
     @app.route("/")
     def index():
-        """Enhanced dashboard with fallback for missing services"""
         try:
             from services.dashboard_stats import get_dashboard_statistics
             stats = get_dashboard_statistics()
-        except ImportError:
-            # Fallback stats when service not available
-            stats = {
-                "incidents": {"total": 0, "open": 0},
-                "safety_concerns": {"total": 0, "open": 0},
-                "capas": {"total": 0, "overdue": 0},
-                "audits": {"completed": 0, "avg_score": 0},
-                "sds": {"total": 0},
-                "risk_assessments": {"high_risk": 0, "total": 0}
-            }
-        except Exception as e:
-            print(f"Error loading dashboard stats: {e}")
-            stats = {}
-        
-        # Check if enhanced dashboard template exists
-        try:
-            return render_template("enhanced_dashboard.html", stats=stats)
         except:
-            # Fallback to basic dashboard
-            return render_template("dashboard.html", stats=stats)
+            stats = {}
+        return render_template("enhanced_dashboard.html", stats=stats)
 
     @app.route("/dashboard")
     def dashboard():
