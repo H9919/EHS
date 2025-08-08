@@ -5,7 +5,7 @@ services:
     plan: free
     region: oregon
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "gunicorn 'app:create_app()' --workers=2 --threads=8 --timeout=120 -b 0.0.0.0:$PORT"
+    startCommand: "gunicorn app:app --workers=2 --threads=8 --timeout=120 --bind=0.0.0.0:$PORT"
     autoDeploy: true
     healthCheckPath: /
     envVars:
@@ -18,7 +18,7 @@ services:
         value: /opt/render/project/src/data/.models
       - key: HF_HOME
         value: /opt/render/project/src/data/.hfcache
-      # Optional: pin Python
+      # Force Python 3.11
       - key: PYTHON_VERSION
         value: 3.11.9
     disk:
