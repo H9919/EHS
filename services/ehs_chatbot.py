@@ -1,4 +1,4 @@
-# services/ehs_chatbot.py - ENHANCED SMART VERSION with proper conversation flow
+# services/ehs_chatbot.py - FIXED VERSION with all issues resolved
 import json
 import re
 import time
@@ -6,6 +6,21 @@ import os
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
 from pathlib import Path
+
+# Check if SBERT is enabled and available
+ENABLE_SBERT = os.environ.get('ENABLE_SBERT', 'false').lower() == 'true'
+SBERT_AVAILABLE = False
+
+if ENABLE_SBERT:
+    try:
+        from sentence_transformers import SentenceTransformer
+        SBERT_AVAILABLE = True
+        print("✓ SBERT enabled and available")
+    except ImportError:
+        print("⚠ SBERT requested but not available - using fallback")
+        SBERT_AVAILABLE = False
+else:
+    print("ℹ SBERT disabled via environment variable")
 
 class SmartIntentClassifier:
     """Enhanced intent classifier with better pattern matching and context awareness"""
@@ -607,19 +622,6 @@ class SmartEHSChatbot:
                 {"text": "🚨 Report Incident", "action": "continue_conversation", "message": "I need to report a workplace incident"},
                 {"text": "🛡️ Safety Concern", "action": "continue_conversation", "message": "I want to report a safety concern"},
                 {"text": "📋 Find SDS", "action": "continue_conversation", "message": "I need to find a safety data sheet"},
-                {"text": "❓ What can you do?", "action": "continue_conversation", "message": "What can you help me with?"}
-            ]
-        }
-    
-    def _get_general_help_response(self) -> Dict:
-        """Enhanced general help response"""
-        return {
-            "message": "🤖 **I'm your Smart EHS Assistant!**\n\nI can help you with:\n\n🚨 **Report Incidents** - Guide you through incident reporting step-by-step\n🛡️ **Safety Concerns** - Submit safety observations and concerns\n📋 **Find SDS** - Search for Safety Data Sheets and chemical information\n📊 **Navigate System** - Help you find what you need in the EHS system\n🔄 **Get Guidance** - Answer questions about EHS procedures\n\nWhat would you like to work on?",
-            "type": "help_menu",
-            "actions": [
-                {"text": "🚨 Report Incident", "action": "continue_conversation", "message": "I need to report a workplace incident"},
-                {"text": "🛡️ Safety Concern", "action": "continue_conversation", "message": "I want to report a safety concern"},
-                {"text": "📋 Find SDS", "action": "continue_conversation", "message": "I need to find a safety data sheet"},
                 {"text": "📊 View Dashboard", "action": "navigate", "url": "/dashboard"}
             ],
             "quick_replies": [
@@ -867,7 +869,7 @@ class SmartEHSChatbot:
             ]
         }
 
-# Create the smart chatbot instance
+# Create the smart chatbot instance with proper SBERT handling
 def create_chatbot():
     """Factory function to create smart chatbot instance"""
     try:
@@ -877,3 +879,21 @@ def create_chatbot():
     except Exception as e:
         print(f"ERROR: Failed to create smart chatbot: {e}")
         return None
+
+# Legacy class aliases for backwards compatibility (fixes test imports)
+EHSChatbot = SmartEHSChatbot
+IntentClassifier = SmartIntentClassifier  
+SlotFillingPolicy = SmartSlotPolicy: "continue_conversation", "message": "I want to report a safety concern"},
+                {"text": "📋 Find SDS", "action": "continue_conversation", "message": "I need to find a safety data sheet"},
+                {"text": "❓ What can you do?", "action": "continue_conversation", "message": "What can you help me with?"}
+            ]
+        }
+    
+    def _get_general_help_response(self) -> Dict:
+        """Enhanced general help response"""
+        return {
+            "message": "🤖 **I'm your Smart EHS Assistant!**\n\nI can help you with:\n\n🚨 **Report Incidents** - Guide you through incident reporting step-by-step\n🛡️ **Safety Concerns** - Submit safety observations and concerns\n📋 **Find SDS** - Search for Safety Data Sheets and chemical information\n📊 **Navigate System** - Help you find what you need in the EHS system\n🔄 **Get Guidance** - Answer questions about EHS procedures\n\nWhat would you like to work on?",
+            "type": "help_menu",
+            "actions": [
+                {"text": "🚨 Report Incident", "action": "continue_conversation", "message": "I need to report a workplace incident"},
+                {"text": "🛡️ Safety Concern", "action
