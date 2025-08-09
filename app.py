@@ -1,4 +1,4 @@
-# app.py - Fixed version with better error handling and routing
+# app.py - Fixed version with correct syntax
 import os
 import sys
 import json
@@ -189,6 +189,36 @@ def create_app():
             
         return render_template("dashboard.html", stats=stats)
     
+    # Debug route for chatbot testing
+    @app.route("/test-chatbot")
+    def test_chatbot():
+        try:
+            from services.ehs_chatbot import create_chatbot
+            chatbot = create_chatbot()
+            if chatbot:
+                # Test the exact failing conversation
+                response1 = chatbot.process_message("I need to report a workplace incident", "test_user")
+                response2 = chatbot.process_message("This involves a workplace injury", "test_user")
+                response3 = chatbot.process_message("garage", "test_user")
+                
+                return jsonify({
+                    "status": "success",
+                    "test_conversation": [
+                        {"message": "I need to report a workplace incident", "response": response1},
+                        {"message": "This involves a workplace injury", "response": response2},
+                        {"message": "garage", "response": response3}
+                    ]
+                })
+            else:
+                return jsonify({"status": "error", "message": "Chatbot creation failed"})
+        except Exception as e:
+            import traceback
+            return jsonify({
+                "status": "error", 
+                "message": str(e), 
+                "traceback": traceback.format_exc()
+            })
+    
     # Memory-efficient API endpoints with better error handling
     @app.route("/api/stats")
     def api_stats():
@@ -347,4 +377,122 @@ def create_app():
     
     @app.errorhandler(413)
     def too_large(error):
-        return jsonify({"error": "File too large. Maximum size is 16MB."}
+        return jsonify({"error": "File too large. Maximum size is 16MB."}), 413
+    
+    # Memory-efficient template filters
+    @app.template_filter('timeago')
+    def timeago_filter(timestamp):
+        """Convert timestamp to human-readable time ago"""
+        try:
+            if isinstance(timestamp, (int, float)):
+                dt = datetime.fromtimestamp(timestamp)
+            else:
+                dt = timestamp
+            
+            now = datetime.now()
+            diff = now - dt
+            
+            if diff.days > 0:
+                return f"{diff.days} day{'s' if diff.days != 1 else ''} ago"
+            elif diff.seconds > 3600:
+                hours = diff.seconds // 3600
+                return f"{hours} hour{'s' if hours != 1 else ''} ago"
+            elif diff.seconds > 60:
+                minutes = diff.seconds // 60
+                return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+            else:
+                return "Just now"
+        except:
+            return "Unknown"
+    
+    @app.template_filter('priority_badge')
+    def priority_badge_filter(priority):
+        """Convert priority to Bootstrap badge class"""
+        badge_map = {
+            "critical": "danger",
+            "high": "warning", 
+            "medium": "info",
+            "low": "secondary"
+        }
+        return badge_map.get(str(priority).lower(), "secondary")
+    
+    return app
+
+def create_default_stats():
+    """Create default statistics when services are unavailable"""
+    return {
+        "incidents": {"total": 0, "open": 0, "this_month": 0},
+        "safety_concerns": {"total": 0, "open": 0, "this_month": 0},
+        "capas": {"total": 0, "overdue": 0, "completed": 0},
+        "sds": {"total": 0, "updated_this_month": 0},
+        "audits": {"scheduled": 0, "completed": 0, "this_month": 0},
+        "message": "Using default values - stats service unavailable"
+    }
+
+def perform_lightweight_search(query: str) -> list:
+    """Memory-efficient search across modules"""
+    results = []
+    query_lower = query.lower()
+    
+    try:
+        # Search incidents (lightweight)
+        incidents_file = Path("data/incidents.json")
+        if incidents_file.exists():
+            try:
+                incidents = json.loads(incidents_file.read_text())
+                for incident in list(incidents.values())[:20]:  # Limit to save memory
+                    if (query_lower in incident.get("type", "").lower() or 
+                        query_lower in str(incident.get("answers", {}).get("people", "")).lower()[:100]):
+                        results.append({
+                            "type": "Incident",
+                            "title": f"{incident.get('type', 'Unknown')} Incident",
+                            "description": f"ID: {incident['id'][:8]}...",
+                            "url": f"/incidents/{incident['id']}/edit",
+                            "module": "incidents"
+                        })
+            except Exception as e:
+                print(f"Error searching incidents: {e}")
+        
+        # Search SDS (lightweight)
+        sds_file = Path("data/sds/index.json")
+        if sds_file.exists():
+            try:
+                sds_index = json.loads(sds_file.read_text())
+                for sds in list(sds_index.values())[:10]:  # Limit to save memory
+                    if (query_lower in sds.get("product_name", "").lower() or
+                        query_lower in sds.get("file_name", "").lower()):
+                        results.append({
+                            "type": "SDS",
+                            "title": sds.get("product_name", "Unknown Product"),
+                            "description": f"File: {sds.get('file_name', 'Unknown')}",
+                            "url": f"/sds/{sds['id']}",
+                            "module": "sds"
+                        })
+            except Exception as e:
+                print(f"Error searching SDS: {e}")
+        
+    except Exception as e:
+        print(f"Search error: {e}")
+    
+    return results[:10]  # Limit results to save memory
+
+# Create app instance for Gunicorn/WSGI servers
+app = create_app()
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    debug = os.environ.get("FLASK_ENV") == "development"
+    
+    print("=" * 60)
+    print("🚀 Starting Memory-Optimized Smart EHS Management System")
+    print("=" * 60)
+    print(f"Port: {port}")
+    print(f"Debug mode: {debug}")
+    print(f"Environment: {os.environ.get('FLASK_ENV', 'production')}")
+    print(f"Python version: {sys.version.split()[0]}")
+    print(f"SBERT enabled: {os.getenv('ENABLE_SBERT', 'false')}")
+    print("🤖 Memory-optimized AI Chatbot enabled")
+    print("💾 Optimized for Render free plan (512MB)")
+    print("=" * 60)
+    
+    app.run(host="0.0.0.0", port=port, debug=debug)
