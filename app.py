@@ -1,4 +1,4 @@
-# app.py - FIXED VERSION with proper error handling and route management
+# app.py - FIXED VERSION with unique route function names
 import os
 import sys
 import json
@@ -52,7 +52,7 @@ def create_app():
         except ImportError as e:
             print(f"⚠ {display_name} module not available: {e}")
             blueprint_errors.append(f"{display_name}: {str(e)}")
-            # Create fallback routes for critical modules
+            # Create fallback routes for critical modules with unique names
             create_fallback_routes(app, url_prefix, display_name)
         except Exception as e:
             print(f"✗ Error loading {display_name}: {e}")
@@ -149,7 +149,9 @@ def create_app():
         if request.path.startswith('/api/'):
             return jsonify({"error": "API endpoint not found"}), 404
         
-        return render_template("error_404.html", 
+        return render_template("fallback_module.html", 
+                             module_name="Page",
+                             description="The page you're looking for was not found",
                              blueprints_loaded=blueprints_loaded), 404
     
     @app.errorhandler(500)
@@ -160,7 +162,9 @@ def create_app():
         if request.path.startswith('/api/'):
             return jsonify({"error": "Internal server error"}), 500
         
-        return render_template("error_500.html", 
+        return render_template("fallback_module.html", 
+                             module_name="System Error",
+                             description="A system error occurred",
                              blueprints_loaded=blueprints_loaded), 500
     
     @app.errorhandler(413)
@@ -174,9 +178,10 @@ def create_app():
         if request.path.startswith('/api/'):
             return jsonify({"error": "Service temporarily unavailable"}), 502
         
-        return render_template("error_500.html", 
-                             blueprints_loaded=blueprints_loaded,
-                             error_type="502 Bad Gateway"), 502
+        return render_template("fallback_module.html", 
+                             module_name="Service Unavailable",
+                             description="Service temporarily unavailable",
+                             blueprints_loaded=blueprints_loaded), 502
     
     # Template filters
     @app.template_filter('timeago')
@@ -261,17 +266,30 @@ def create_app():
     return app
 
 def create_fallback_routes(app, url_prefix, module_name):
-    """Create fallback routes for unavailable modules"""
-    @app.route(f"{url_prefix}")
-    @app.route(f"{url_prefix}/")
-    def fallback_list():
+    """Create fallback routes for unavailable modules with unique function names"""
+    # Create unique function names to avoid conflicts
+    module_safe_name = module_name.replace(" ", "_").replace("&", "and").lower()
+    
+    # Create unique endpoint and function names
+    list_endpoint = f"{module_safe_name}_fallback_list"
+    new_endpoint = f"{module_safe_name}_fallback_new"
+    
+    def create_list_view():
         return render_template("fallback_module.html", 
                              module_name=module_name,
                              description=f"{module_name} module is loading...")
     
-    @app.route(f"{url_prefix}/new")
-    def fallback_new():
-        return redirect(url_for('fallback_list'))
+    def create_new_view():
+        return redirect(url_for(list_endpoint))
+    
+    # Set unique function names for debugging
+    create_list_view.__name__ = list_endpoint
+    create_new_view.__name__ = new_endpoint
+    
+    # Register routes with unique endpoints
+    app.add_url_rule(f"{url_prefix}", endpoint=list_endpoint, view_func=create_list_view)
+    app.add_url_rule(f"{url_prefix}/", endpoint=f"{list_endpoint}_slash", view_func=create_list_view)
+    app.add_url_rule(f"{url_prefix}/new", endpoint=new_endpoint, view_func=create_new_view)
 
 def get_dashboard_statistics_safe():
     """Get dashboard statistics with error handling"""
@@ -322,7 +340,7 @@ if __name__ == "__main__":
     print(f"Environment: {os.environ.get('FLASK_ENV', 'production')}")
     print(f"Python version: {sys.version.split()[0]}")
     print("🤖 Enhanced AI Chatbot with fixed error handling")
-    print("🔧 All routes properly registered with comprehensive fallbacks")
+    print("🔧 All routes properly registered with unique names")
     print("=" * 60)
     
     app.run(host="0.0.0.0", port=port, debug=debug)
