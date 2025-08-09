@@ -1,0 +1,207 @@
+<!-- templates/safety_concerns_list.html -->
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3><i class="bi bi-shield-exclamation text-warning"></i> Safety Concerns</h3>
+    <div>
+        <a href="{{ url_for('safety_concerns.new_concern') }}" class="btn btn-primary">
+            <i class="bi bi-plus-circle"></i> New Safety Concern
+        </a>
+        <a href="{{ url_for('safety_concerns.new_concern', anonymous='true') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-incognito"></i> Anonymous Report
+        </a>
+    </div>
+</div>
+
+<!-- Quick Stats -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-center bg-primary text-white">
+            <div class="card-body">
+                <h4>{{ stats.total }}</h4>
+                <small>Total Concerns</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center bg-warning text-white">
+            <div class="card-body">
+                <h4>{{ stats.open }}</h4>
+                <small>Open</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center bg-success text-white">
+            <div class="card-body">
+                <h4>{{ stats.resolved }}</h4>
+                <small>Resolved</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center bg-info text-white">
+            <div class="card-body">
+                <h4>{{ stats.this_month }}</h4>
+                <small>This Month</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Safety Concerns Table -->
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Title</th>
+                        <th>Type</th>
+                        <th>Location</th>
+                        <th>Hazard Type</th>
+                        <th>Priority</th>
+                        <th>Status</th>
+                        <th>Reporter</th>
+                        <th>Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for concern in concerns %}
+                    <tr>
+                        <td><code>{{ concern.id[:8] }}</code></td>
+                        <td>
+                            <strong>{{ concern.title }}</strong>
+                            {% if concern.description %}
+                            <br><small class="text-muted">{{ concern.description[:100] }}{% if concern.description|length > 100 %}...{% endif %}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-{{ 'info' if concern.type == 'concern' else 'success' }}">
+                                {{ concern.type|title }}
+                            </span>
+                        </td>
+                        <td>{{ concern.location or 'Not specified' }}</td>
+                        <td>{{ concern.hazard_type or 'General' }}</td>
+                        <td>
+                            <span class="badge bg-{{ 'danger' if concern.priority == 'high' else ('warning' if concern.priority == 'medium' else 'secondary') }}">
+                                {{ concern.priority|title }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge bg-{{ 'success' if concern.status == 'resolved' else ('warning' if concern.status == 'investigating' else 'secondary') }}">
+                                {{ concern.status|replace('_', ' ')|title }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if concern.anonymous %}
+                                <span class="text-muted">Anonymous</span>
+                            {% else %}
+                                {{ concern.reporter or 'Unknown' }}
+                            {% endif %}
+                        </td>
+                        <td>{{ moment(concern.created_date).format('YYYY-MM-DD') }}</td>
+                        <td>
+                            <a href="{{ url_for('safety_concerns.concern_detail', concern_id=concern.id) }}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-eye"></i> View
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        {% if not concerns %}
+        <div class="text-center py-5">
+            <i class="bi bi-shield-exclamation fs-1 text-muted"></i>
+            <h5 class="text-muted mt-3">No Safety Concerns Found</h5>
+            <p class="text-muted">Safety observations help create a safer workplace for everyone.</p>
+            <a href="{{ url_for('safety_concerns.new_concern') }}" class="btn btn-primary">
+                <i class="bi bi-plus-circle"></i> Report First Safety Concern
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+<!-- templates/safety_concern_new.html -->
+{% extends "base.html" %}
+{% block content %}
+<h3 class="mb-4">
+    <i class="bi bi-shield-exclamation text-warning"></i> 
+    {% if anonymous %}Anonymous {% endif %}Safety Concern Report
+</h3>
+
+<div class="alert alert-info">
+    <h6><i class="bi bi-shield-check"></i> Your Safety Matters</h6>
+    Thank you for speaking up! Every safety observation helps create a safer workplace for everyone.
+    All reports are taken seriously and handled confidentially.
+</div>
+
+<form method="post" class="card p-4">
+    <div class="row">
+        <div class="col-md-6">
+            <div class="mb-3">
+                <label class="form-label">Report Type</label>
+                <select class="form-select" name="type" required>
+                    <option value="">Select type</option>
+                    <option value="concern" {{ 'selected' if concern_type == 'concern' }}>Safety Concern/Observation</option>
+                    <option value="recognition">Safety Recognition</option>
+                </select>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="mb-3">
+                <label class="form-label">Location</label>
+                <input type="text" class="form-control" name="location" placeholder="Building, area, or specific location">
+            </div>
+        </div>
+    </div>
+    
+    <div class="mb-3">
+        <label class="form-label">Title/Summary <span class="text-danger">*</span></label>
+        <input type="text" class="form-control" name="title" required placeholder="Brief description of the concern">
+    </div>
+    
+    <div class="mb-3">
+        <label class="form-label">Detailed Description <span class="text-danger">*</span></label>
+        <textarea class="form-control" name="description" rows="4" required 
+                  placeholder="Describe what you observed, including who, what, when, where, and how"></textarea>
+    </div>
+    
+    <div class="row">
+        <div class="col-md-6">
+            <div class="mb-3">
+                <label class="form-label">Hazard Type</label>
+                <select class="form-select" name="hazard_type">
+                    <option value="">Select hazard type</option>
+                    <option value="slip_trip_fall">Slip/Trip/Fall</option>
+                    <option value="chemical">Chemical Exposure</option>
+                    <option value="equipment">Equipment/Machinery</option>
+                    <option value="ergonomic">Ergonomic</option>
+                    <option value="electrical">Electrical</option>
+                    <option value="fire">Fire/Explosion</option>
+                    <option value="environmental">Environmental</option>
+                    <option value="security">Security</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="mb-3">
+                <label class="form-label">Risk Level</label>
+                <select class="form-select" name="risk_level">
+                    <option value="low">Low - Minor issue</option>
+                    <option value="medium" selected>Medium - Could cause harm</option>
+                    <option value="high">High - Likely to cause serious harm</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    
+    <div class="mb-3">
+        <label class="form-label">Immediate Action Taken</label>
