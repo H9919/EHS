@@ -1,3 +1,4 @@
+# routes/audits.py - Enhanced audit management
 import json
 import time
 from pathlib import Path
@@ -8,12 +9,24 @@ audits_bp = Blueprint("audits", __name__)
 
 @audits_bp.route("/")
 def audits_list():
+    """List all audits"""
     audits = load_audits()
     audit_list = sorted(audits.values(), key=lambda x: x.get("created_date", 0), reverse=True)
-    return render_template("audits_list.html", audits=audit_list)
+    
+    # Calculate statistics
+    stats = {
+        "total": len(audit_list),
+        "scheduled": len([a for a in audit_list if a.get("status") == "scheduled"]),
+        "completed": len([a for a in audit_list if a.get("status") == "completed"]),
+        "in_progress": len([a for a in audit_list if a.get("status") == "in_progress"]),
+        "avg_score": calculate_average_score(audit_list)
+    }
+    
+    return render_template("audits_list.html", audits=audit_list, stats=stats)
 
 @audits_bp.route("/new", methods=["GET", "POST"])
 def new_audit():
+    """Create new audit"""
     if request.method == "GET":
         audit_templates = get_audit_templates()
         return render_template("audit_new.html", templates=audit_templates)
@@ -34,11 +47,12 @@ def new_audit():
     }
     
     save_audit(audit_data)
-    flash(f"Audit {audit_data['id']} scheduled successfully", "success")
+    flash(f"Audit {audit_data['id'][:8]} scheduled successfully", "success")
     return redirect(url_for("audits.audit_detail", audit_id=audit_data["id"]))
 
 @audits_bp.route("/<audit_id>")
 def audit_detail(audit_id):
+    """View audit details"""
     audits = load_audits()
     audit = audits.get(audit_id)
     if not audit:
@@ -48,6 +62,7 @@ def audit_detail(audit_id):
 
 @audits_bp.route("/<audit_id>/conduct", methods=["GET", "POST"])
 def conduct_audit(audit_id):
+    """Conduct audit"""
     audits = load_audits()
     audit = audits.get(audit_id)
     
@@ -148,23 +163,16 @@ def get_checklist_for_template(template_id):
             {"id": "ca_3", "question": "Are incompatible chemicals stored separately?", "points": 4, "category": "storage"},
             {"id": "ca_4", "question": "Are secondary containment systems in place and functional?", "points": 3, "category": "containment"},
             {"id": "ca_5", "question": "Is chemical inventory accurate and up to date?", "points": 2, "category": "inventory"}
-        ],
-        "equipment_check": [
-            {"id": "ec_1", "question": "Are all guards and safety devices in place and functional?", "points": 4, "category": "guarding"},
-            {"id": "ec_2", "question": "Are lockout/tagout procedures properly implemented?", "points": 4, "category": "loto"},
-            {"id": "ec_3", "question": "Is equipment properly maintained per manufacturer schedule?", "points": 3, "category": "maintenance"},
-            {"id": "ec_4", "question": "Are operators trained and competent on equipment safety?", "points": 3, "category": "training"},
-            {"id": "ec_5", "question": "Are inspection records current and properly documented?", "points": 2, "category": "documentation"}
-        ],
-        "emergency_prep": [
-            {"id": "ep_1", "question": "Are fire extinguishers charged and accessible?", "points": 3, "category": "fire_safety"},
-            {"id": "ep_2", "question": "Are emergency contact numbers posted and current?", "points": 2, "category": "communication"},
-            {"id": "ep_3", "question": "Are evacuation routes clearly marked and unobstructed?", "points": 3, "category": "evacuation"},
-            {"id": "ep_4", "question": "Is emergency equipment functional and inspected?", "points": 4, "category": "equipment"},
-            {"id": "ep_5", "question": "Are personnel trained on emergency procedures?", "points": 3, "category": "training"}
         ]
     }
     return checklists.get(template_id, [])
+
+def calculate_average_score(audits):
+    """Calculate average audit score"""
+    completed_audits = [a for a in audits if a.get("status") == "completed" and a.get("score")]
+    if not completed_audits:
+        return 0
+    return round(sum(a["score"] for a in completed_audits) / len(completed_audits), 1)
 
 def save_audit(audit_data):
     """Save audit to JSON file"""
@@ -183,5 +191,8 @@ def load_audits():
     """Load audits from JSON file"""
     audits_file = Path("data/audits.json")
     if audits_file.exists():
-        return json.loads(audits_file.read_text())
+        try:
+            return json.loads(audits_file.read_text())
+        except:
+            return {}
     return {}
