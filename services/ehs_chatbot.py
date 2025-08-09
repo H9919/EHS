@@ -1,4 +1,4 @@
-# services/ehs_chatbot.py - Simplified but WORKING Smart EHS Chatbot
+# services/ehs_chatbot.py - Fixed indentation errors
 import json
 import re
 import time
