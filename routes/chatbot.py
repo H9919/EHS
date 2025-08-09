@@ -1,7 +1,8 @@
-# routes/chatbot.py - WORKING chatbot route (simplified)
+# routes/chatbot.py - Fixed imports for type hints
 import json
 import os
 from pathlib import Path
+from typing import Dict, Optional
 from werkzeug.utils import secure_filename
 from flask import Blueprint, request, jsonify, render_template
 
@@ -117,7 +118,7 @@ def chat_interface():
             ]
         })
 
-def get_fallback_response(message: str, uploaded_file: Dict = None) -> Dict:
+def get_fallback_response(message: str, uploaded_file: Optional[Dict] = None) -> Dict:
     """Fallback responses when main chatbot isn't available"""
     message_lower = message.lower()
     
