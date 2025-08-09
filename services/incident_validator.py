@@ -1,6 +1,7 @@
-# services/incident_validator.py - Enhanced with scoring, 5 Whys, and CAPA generation
+# services/incident_validator.py - Enhanced with better risk assessment and responsibility tracking
 import json
 import time
+import re
 from typing import Dict, Tuple, List, Optional
 from pathlib import Path
 from datetime import datetime
@@ -16,183 +17,278 @@ REQUIRED_BY_TYPE = {
     "property": ["cost", "legal"],
     "emergency": ["people", "environment", "cost", "legal", "reputation"],
     "other": ["people", "environment", "cost", "legal", "reputation"],
+    # Multi-type incidents
+    "injury+environmental": ["people", "environment", "legal", "reputation"],
+    "injury+property": ["people", "cost", "legal"],
+    "environmental+property": ["environment", "cost", "legal", "reputation"],
+    "injury+environmental+property": ["people", "environment", "cost", "legal", "reputation"]
 }
 
 ALL_CATEGORIES = ["people", "environment", "cost", "legal", "reputation"]
 
-# Scoring lookup tables for severity and likelihood
-SEVERITY_LOOKUP = {
-    "people": {
-        "first_aid": 2,
-        "medical_treatment": 4,
-        "lost_time": 6,
-        "hospitalization": 8,
-        "fatality": 10,
-        "multiple_fatalities": 10
-    },
-    "environment": {
-        "no_release": 0,
-        "minor_contained": 2,
-        "moderate_reportable": 4,
-        "major_offsite": 6,
-        "significant_impact": 8,
-        "catastrophic": 10
-    },
-    "cost": {
-        "under_1k": 2,
-        "1k_to_10k": 4,
-        "10k_to_100k": 6,
-        "100k_to_1m": 8,
-        "over_1m": 10
-    },
-    "legal": {
-        "compliant": 0,
-        "minor_deviation": 2,
-        "citation_risk": 4,
-        "violation_issued": 6,
-        "enforcement_action": 8,
-        "criminal_charges": 10
-    },
-    "reputation": {
-        "internal_only": 0,
-        "client_awareness": 2,
-        "partner_concern": 4,
-        "media_attention": 6,
-        "public_crisis": 8,
-        "brand_damage": 10
-    }
-}
-
-LIKELIHOOD_LOOKUP = {
-    0: "impossible",
-    2: "rare", 
-    4: "unlikely",
-    6: "possible",
-    8: "likely",
-    10: "almost_certain"
-}
-
-class IncidentScoring:
-    """Enhanced incident scoring using ERC matrix and heuristics"""
+class EnhancedIncidentScoring:
+    """Enhanced incident scoring with detailed likelihood and severity assessment"""
     
     def __init__(self):
-        self.severity_keywords = {
+        self.severity_patterns = {
             "people": {
-                "fatality": ["death", "died", "fatal", "killed", "fatality"],
-                "hospitalization": ["hospital", "admitted", "surgery", "severe", "serious"],
-                "lost_time": ["lost time", "days off", "restricted duty", "modified work"],
-                "medical_treatment": ["medical", "doctor", "clinic", "treatment", "stitches"],
-                "first_aid": ["first aid", "band-aid", "minor", "superficial"]
+                "fatality": {
+                    "keywords": ["death", "died", "fatal", "killed", "fatality", "deceased"],
+                    "score": 10,
+                    "description": "Fatality occurred"
+                },
+                "major_injury": {
+                    "keywords": ["hospital", "admitted", "surgery", "severe", "serious", "broke", "broken", "fractured"],
+                    "score": 8,
+                    "description": "Serious injury requiring hospitalization"
+                },
+                "medical_treatment": {
+                    "keywords": ["medical", "doctor", "clinic", "treatment", "emergency room", "stitches"],
+                    "score": 6,
+                    "description": "Medical treatment required"
+                },
+                "first_aid": {
+                    "keywords": ["first aid", "band-aid", "minor", "superficial", "small cut"],
+                    "score": 2,
+                    "description": "First aid treatment only"
+                }
             },
             "environment": {
-                "catastrophic": ["major spill", "widespread", "contamination", "ecosystem"],
-                "significant_impact": ["offsite", "groundwater", "soil contamination"],
-                "major_offsite": ["reported to EPA", "regulatory", "TCEQ"],
-                "moderate_reportable": ["reportable", "notification required"],
-                "minor_contained": ["contained", "cleaned up", "minor release"]
+                "catastrophic": {
+                    "keywords": ["major spill", "widespread contamination", "ecosystem damage", "groundwater"],
+                    "score": 10,
+                    "description": "Catastrophic environmental impact"
+                },
+                "significant": {
+                    "keywords": ["significant spill", "reportable", "EPA notification", "offsite impact"],
+                    "score": 8,
+                    "description": "Significant environmental impact"
+                },
+                "moderate": {
+                    "keywords": ["moderate spill", "contained release", "cleanup required"],
+                    "score": 6,
+                    "description": "Moderate environmental impact"
+                },
+                "minor": {
+                    "keywords": ["minor spill", "small release", "immediately cleaned", "liter"],
+                    "score": 4,
+                    "description": "Minor environmental impact"
+                },
+                "minimal": {
+                    "keywords": ["contained", "no release", "prevented spill"],
+                    "score": 2,
+                    "description": "Minimal environmental impact"
+                }
             },
             "cost": {
-                "over_1m": ["million", "extensive damage", "total loss"],
-                "100k_to_1m": ["hundred thousand", "major repair", "replacement"],
-                "10k_to_100k": ["significant", "repair", "downtime"],
-                "1k_to_10k": ["minor repair", "small damage"],
-                "under_1k": ["minimal", "cosmetic", "negligible"]
+                "catastrophic": {
+                    "keywords": ["million", "total loss", "extensive damage", "destroyed"],
+                    "score": 10,
+                    "description": "Catastrophic financial impact (>$1M)"
+                },
+                "major": {
+                    "keywords": ["hundred thousand", "major repair", "significant cost", "expensive"],
+                    "score": 8,
+                    "description": "Major financial impact ($100K-$1M)"
+                },
+                "moderate": {
+                    "keywords": ["ten thousand", "repair needed", "moderate cost"],
+                    "score": 6,
+                    "description": "Moderate financial impact ($10K-$100K)"
+                },
+                "minor": {
+                    "keywords": ["thousand", "small repair", "minor damage"],
+                    "score": 4,
+                    "description": "Minor financial impact ($1K-$10K)"
+                },
+                "minimal": {
+                    "keywords": ["cosmetic", "negligible", "under thousand"],
+                    "score": 2,
+                    "description": "Minimal financial impact (<$1K)"
+                }
             }
         }
         
-        self.likelihood_keywords = {
-            "almost_certain": ["frequent", "common", "regular", "expected"],
-            "likely": ["probable", "often", "recurring"],
-            "possible": ["occasional", "sometimes", "periodic"],
-            "unlikely": ["rare", "infrequent", "isolated"],
-            "rare": ["very rare", "unusual", "exceptional"]
+        self.likelihood_patterns = {
+            "almost_certain": {
+                "keywords": ["happens daily", "common occurrence", "frequent", "always", "regular"],
+                "score": 10,
+                "description": "Almost certain to recur (monthly or more)"
+            },
+            "likely": {
+                "keywords": ["happens often", "likely", "probable", "occurs regularly"],
+                "score": 8,
+                "description": "Likely to recur (annually)"
+            },
+            "possible": {
+                "keywords": ["could happen", "possible", "might occur", "sometimes"],
+                "score": 6,
+                "description": "Possible recurrence (every few years)"
+            },
+            "unlikely": {
+                "keywords": ["rare", "unlikely", "infrequent", "seldom occurs"],
+                "score": 4,
+                "description": "Unlikely to recur (once per decade)"
+            },
+            "rare": {
+                "keywords": ["very rare", "exceptional", "never seen before", "unprecedented"],
+                "score": 2,
+                "description": "Rare occurrence (once in career)"
+            }
         }
     
-    def compute_severity_likelihood(self, incident_data: Dict) -> Dict:
-        """Compute severity and likelihood scores using semantic analysis"""
+    def assess_comprehensive_risk(self, incident_data: Dict) -> Dict:
+        """Perform comprehensive risk assessment"""
         
-        # Extract text for analysis
+        # Extract all text for analysis
         answers = incident_data.get("answers", {})
-        incident_type = incident_data.get("type", "other")
+        chatbot_data = incident_data.get("chatbot_data", {})
+        incident_types = incident_data.get("incident_types", [incident_data.get("type", "other")])
         
-        combined_text = " ".join([
-            answers.get("people", ""),
-            answers.get("environment", ""),
-            answers.get("cost", ""), 
-            answers.get("legal", ""),
-            answers.get("reputation", "")
+        # Combine all text sources
+        all_text = " ".join([
+            str(answers.get("people", "")),
+            str(answers.get("environment", "")),
+            str(answers.get("cost", "")),
+            str(answers.get("legal", "")),
+            str(answers.get("reputation", "")),
+            str(chatbot_data.get("description", "")),
+            " ".join([str(v) for v in chatbot_data.values() if isinstance(v, str)])
         ]).lower()
         
-        # Calculate severity scores for each category
-        severity_scores = {}
+        # Assess likelihood
+        likelihood_assessment = self._assess_likelihood(all_text, incident_types)
+        
+        # Assess severity for each category
+        severity_assessments = {}
         for category in ALL_CATEGORIES:
             category_text = answers.get(category, "").lower()
-            severity_scores[category] = self._analyze_severity(category, category_text, combined_text)
+            if category_text or category in ["people", "environment", "cost"]:  # Always assess key categories
+                severity_assessments[category] = self._assess_severity(category, category_text, all_text)
         
-        # Calculate likelihood score
-        likelihood_score = self._analyze_likelihood(combined_text, incident_type)
-        
-        # Calculate overall risk score (likelihood * max severity)
-        max_severity = max(severity_scores.values()) if severity_scores else 0
-        risk_score = likelihood_score * max_severity
+        # Calculate overall risk score
+        max_severity_score = max([s["score"] for s in severity_assessments.values()], default=0)
+        risk_score = likelihood_assessment["score"] * max_severity_score / 10  # Normalize to 0-100
         
         # Determine risk level
         risk_level = self._get_risk_level(risk_score)
         
+        # Generate risk matrix
+        risk_matrix = self._generate_risk_matrix(likelihood_assessment, severity_assessments)
+        
         return {
-            "severity_scores": severity_scores,
-            "likelihood_score": likelihood_score,
-            "risk_score": risk_score,
+            "likelihood": likelihood_assessment,
+            "severities": severity_assessments,
+            "risk_score": round(risk_score, 1),
             "risk_level": risk_level,
-            "rationale": self._generate_rationale(severity_scores, likelihood_score, incident_type)
+            "risk_matrix": risk_matrix,
+            "recommendations": self._generate_recommendations(risk_level, incident_types, severity_assessments),
+            "summary": self._generate_risk_summary(likelihood_assessment, severity_assessments, risk_level, risk_score)
         }
     
-    def _analyze_severity(self, category: str, category_text: str, full_text: str) -> int:
-        """Analyze severity for a specific category"""
-        if not category_text.strip():
-            return 0
+    def _assess_likelihood(self, text: str, incident_types: List[str]) -> Dict:
+        """Assess likelihood of recurrence"""
         
-        keywords = self.severity_keywords.get(category, {})
-        
-        # Check for specific severity indicators
-        for severity_level, terms in keywords.items():
-            for term in terms:
-                if term in category_text or term in full_text:
-                    return SEVERITY_LOOKUP[category].get(severity_level, 2)
-        
-        # Default scoring based on text length and content
-        if len(category_text) > 100:
-            return 4  # Detailed description suggests moderate severity
-        elif len(category_text) > 20:
-            return 2  # Some description suggests minor severity
-        else:
-            return 1  # Minimal description
-    
-    def _analyze_likelihood(self, text: str, incident_type: str) -> int:
-        """Analyze likelihood of recurrence"""
-        
-        # Check for likelihood keywords
-        for likelihood_level, terms in self.likelihood_keywords.items():
-            for term in terms:
-                if term in text:
-                    # Convert likelihood level to score
-                    for score, level in LIKELIHOOD_LOOKUP.items():
-                        if level == likelihood_level:
-                            return score
+        # Check for explicit likelihood indicators
+        for level, config in self.likelihood_patterns.items():
+            for keyword in config["keywords"]:
+                if keyword in text:
+                    return {
+                        "level": level,
+                        "score": config["score"],
+                        "description": config["description"],
+                        "basis": f"Based on text indicator: '{keyword}'"
+                    }
         
         # Default likelihood based on incident type
-        type_defaults = {
-            "injury": 6,        # Possible
-            "near_miss": 8,     # Likely (indicates system weakness)
-            "environmental": 4, # Unlikely (usually isolated)
-            "vehicle": 6,       # Possible
-            "property": 4,      # Unlikely
-            "security": 2       # Rare
+        type_likelihood = {
+            "injury": {"score": 6, "level": "possible", "description": "Possible recurrence (workplace injuries can recur)"},
+            "near_miss": {"score": 8, "level": "likely", "description": "Likely recurrence (near misses indicate system weakness)"},
+            "environmental": {"score": 4, "level": "unlikely", "description": "Unlikely recurrence (environmental incidents often isolated)"},
+            "property": {"score": 4, "level": "unlikely", "description": "Unlikely recurrence (property damage often isolated)"},
+            "vehicle": {"score": 6, "level": "possible", "description": "Possible recurrence (vehicle incidents depend on controls)"}
         }
         
-        return type_defaults.get(incident_type, 4)  # Default to "unlikely"
+        # For multiple incident types, use highest likelihood
+        max_likelihood = 4  # Default
+        primary_type = "other"
+        
+        for incident_type in incident_types:
+            if incident_type in type_likelihood:
+                if type_likelihood[incident_type]["score"] > max_likelihood:
+                    max_likelihood = type_likelihood[incident_type]["score"]
+                    primary_type = incident_type
+        
+        if primary_type in type_likelihood:
+            config = type_likelihood[primary_type]
+            return {
+                "level": config["level"],
+                "score": config["score"],
+                "description": config["description"],
+                "basis": f"Based on incident type: {primary_type}"
+            }
+        
+        # Ultimate fallback
+        return {
+            "level": "possible",
+            "score": 6,
+            "description": "Possible recurrence (standard assessment)",
+            "basis": "Default assessment"
+        }
     
-    def _get_risk_level(self, risk_score: int) -> str:
+    def _assess_severity(self, category: str, category_text: str, full_text: str) -> Dict:
+        """Assess severity for a specific category"""
+        
+        if category not in self.severity_patterns:
+            return {
+                "level": "moderate",
+                "score": 4,
+                "description": "Moderate impact",
+                "basis": "Category not in assessment patterns"
+            }
+        
+        # Check category-specific text first, then full text
+        text_to_check = category_text if category_text.strip() else full_text
+        
+        patterns = self.severity_patterns[category]
+        
+        # Check from highest to lowest severity
+        for level, config in sorted(patterns.items(), key=lambda x: x[1]["score"], reverse=True):
+            for keyword in config["keywords"]:
+                if keyword in text_to_check:
+                    return {
+                        "level": level,
+                        "score": config["score"],
+                        "description": config["description"],
+                        "basis": f"Based on keyword: '{keyword}'"
+                    }
+        
+        # If no keywords found but text exists, assess by length and content
+        if text_to_check.strip():
+            if len(text_to_check) > 100:
+                return {
+                    "level": "moderate",
+                    "score": 4,
+                    "description": "Moderate impact (detailed description provided)",
+                    "basis": "Based on description length and detail"
+                }
+            else:
+                return {
+                    "level": "minor",
+                    "score": 2,
+                    "description": "Minor impact (limited description)",
+                    "basis": "Based on limited description"
+                }
+        
+        # No information available
+        return {
+            "level": "unknown",
+            "score": 0,
+            "description": "No information available",
+            "basis": "No data provided for this category"
+        }
+    
+    def _get_risk_level(self, risk_score: float) -> str:
         """Convert risk score to risk level"""
         if risk_score >= 80:
             return "Critical"
@@ -205,223 +301,130 @@ class IncidentScoring:
         else:
             return "Very Low"
     
-    def _generate_rationale(self, severity_scores: Dict, likelihood_score: int, incident_type: str) -> str:
-        """Generate human-readable rationale for the scoring"""
-        max_category = max(severity_scores, key=severity_scores.get) if severity_scores else "none"
-        max_severity = severity_scores.get(max_category, 0)
+    def _generate_risk_matrix(self, likelihood: Dict, severities: Dict) -> Dict:
+        """Generate risk matrix visualization data"""
+        matrix = {
+            "likelihood": {
+                "score": likelihood["score"],
+                "level": likelihood["level"],
+                "description": likelihood["description"]
+            },
+            "severities": []
+        }
         
-        likelihood_level = LIKELIHOOD_LOOKUP.get(likelihood_score, "unknown")
+        for category, severity in severities.items():
+            if severity["score"] > 0:  # Only include categories with actual assessments
+                matrix["severities"].append({
+                    "category": category,
+                    "score": severity["score"],
+                    "level": severity["level"],
+                    "description": severity["description"]
+                })
         
-        rationale = f"Primary impact category: {max_category} (severity: {max_severity}/10). "
-        rationale += f"Likelihood of recurrence: {likelihood_level} ({likelihood_score}/10). "
-        rationale += f"Incident type: {incident_type}."
+        return matrix
+    
+    def _generate_recommendations(self, risk_level: str, incident_types: List[str], severities: Dict) -> List[str]:
+        """Generate risk-based recommendations"""
+        recommendations = []
         
-        return rationale
+        # Risk level based recommendations
+        if risk_level in ["Critical", "High"]:
+            recommendations.extend([
+                "Immediate management notification required",
+                "Stop work in affected area until hazards are controlled",
+                "Conduct detailed investigation within 24 hours",
+                "Implement immediate interim controls"
+            ])
+        elif risk_level == "Medium":
+            recommendations.extend([
+                "Investigate within 48 hours",
+                "Review and update risk controls",
+                "Consider additional training or procedures"
+            ])
+        else:
+            recommendations.extend([
+                "Document lessons learned",
+                "Review existing controls for adequacy"
+            ])
+        
+        # Incident type specific recommendations
+        if "injury" in incident_types:
+            recommendations.append("Review PPE requirements and usage")
+            if any(s["score"] >= 6 for s in severities.values() if "people" in str(s)):
+                recommendations.append("Consider OSHA reportability requirements")
+        
+        if "environmental" in incident_types:
+            recommendations.append("Assess regulatory reporting requirements")
+            recommendations.append("Review spill response procedures")
+        
+        if "property" in incident_types:
+            recommendations.append("Assess insurance notification requirements")
+            recommendations.append("Review equipment maintenance procedures")
+        
+        # Multiple incident type recommendations
+        if len(incident_types) > 1:
+            recommendations.append("Conduct comprehensive root cause analysis")
+            recommendations.append("Review integrated management systems")
+        
+        return list(set(recommendations))  # Remove duplicates
+    
+    def _generate_risk_summary(self, likelihood: Dict, severities: Dict, risk_level: str, risk_score: float) -> str:
+        """Generate comprehensive risk summary"""
+        summary = f"**Overall Risk Level: {risk_level}** (Score: {risk_score}/100)\n\n"
+        
+        summary += f"**Likelihood of Recurrence:**\n"
+        summary += f"• Level: {likelihood['level'].replace('_', ' ').title()} ({likelihood['score']}/10)\n"
+        summary += f"• {likelihood['description']}\n"
+        summary += f"• Basis: {likelihood['basis']}\n\n"
+        
+        summary += f"**Severity Assessment by Category:**\n"
+        for category, severity in severities.items():
+            if severity["score"] > 0:
+                summary += f"• **{category.title()}:** {severity['level'].replace('_', ' ').title()} ({severity['score']}/10)\n"
+                summary += f"  - {severity['description']}\n"
+                summary += f"  - {severity['basis']}\n"
+        
+        return summary
 
-class RootCauseAnalysis:
-    """5 Whys implementation for root cause analysis"""
-    
-    def __init__(self):
-        self.guided_prompts = {
-            1: "What happened? (Immediate cause)",
-            2: "Why did this immediate cause occur?",
-            3: "Why did that underlying condition exist?",
-            4: "Why wasn't this prevented by existing controls?",
-            5: "Why do our systems allow this root cause to persist?"
-        }
-    
-    def generate_5_whys_prompts(self, incident_description: str) -> List[Dict]:
-        """Generate guided prompts for 5 Whys analysis"""
-        prompts = []
-        
-        for level, question in self.guided_prompts.items():
-            prompts.append({
-                "level": level,
-                "question": question,
-                "guidance": self._get_guidance_for_level(level),
-                "examples": self._get_examples_for_level(level)
-            })
-        
-        return prompts
-    
-    def _get_guidance_for_level(self, level: int) -> str:
-        """Get guidance text for each Why level"""
-        guidance = {
-            1: "Describe the direct, immediate cause of the incident.",
-            2: "Look for the conditions or actions that led to the immediate cause.",
-            3: "Identify system, process, or organizational factors.",
-            4: "Examine why existing safety controls didn't prevent this.",
-            5: "Find the fundamental organizational or cultural root cause."
-        }
-        return guidance.get(level, "")
-    
-    def _get_examples_for_level(self, level: int) -> List[str]:
-        """Get example answers for each Why level"""
-        examples = {
-            1: ["Employee slipped and fell", "Chemical spilled", "Equipment malfunctioned"],
-            2: ["Floor was wet", "Container leaked", "Maintenance was overdue"],
-            3: ["No wet floor signs", "Inspection missed defect", "Work order delayed"],
-            4: ["Procedure not followed", "Warning system failed", "Training insufficient"],
-            5: ["Safety culture weak", "Resource constraints", "Communication breakdown"]
-        }
-        return examples.get(level, [])
-
-class CAPAGenerator:
-    """CAPA suggestion generator using SBERT similarity"""
-    
-    def __init__(self):
-        self.capa_templates = {
-            "training": [
-                "Provide additional safety training on {topic}",
-                "Conduct refresher training for {department}",
-                "Develop job-specific safety training for {role}",
-                "Implement competency verification for {skill}"
-            ],
-            "procedure": [
-                "Update procedure to include {requirement}",
-                "Create new work instruction for {task}",
-                "Revise safety protocol for {process}",
-                "Establish clear guidelines for {situation}"
-            ],
-            "engineering": [
-                "Install additional safety equipment: {equipment}",
-                "Modify equipment to prevent {hazard}",
-                "Implement engineering controls for {risk}",
-                "Upgrade safety systems in {area}"
-            ],
-            "inspection": [
-                "Increase inspection frequency for {equipment}",
-                "Add safety checkpoints to {process}",
-                "Implement condition monitoring for {system}",
-                "Create inspection checklist for {area}"
-            ],
-            "communication": [
-                "Improve communication of {information}",
-                "Establish notification system for {event}",
-                "Create awareness campaign about {topic}",
-                "Implement toolbox talks on {subject}"
-            ]
-        }
-        
-        # SBERT similarity (if available)
-        try:
-            from sentence_transformers import SentenceTransformer
-            self.model = SentenceTransformer('all-MiniLM-L6-v2')
-            self.sbert_available = True
-        except ImportError:
-            self.sbert_available = False
-    
-    def suggest_capas(self, incident_data: Dict, root_causes: List[str]) -> List[Dict]:
-        """Generate CAPA suggestions based on incident and root causes"""
-        suggestions = []
-        
-        incident_type = incident_data.get("type", "other")
-        description = incident_data.get("answers", {}).get("people", "") + " " + \
-                     incident_data.get("answers", {}).get("environment", "")
-        
-        # Rule-based suggestions
-        rule_suggestions = self._generate_rule_based_capas(incident_type, description, root_causes)
-        suggestions.extend(rule_suggestions)
-        
-        # SBERT-based suggestions (if available)
-        if self.sbert_available:
-            sbert_suggestions = self._generate_sbert_capas(description, root_causes)
-            suggestions.extend(sbert_suggestions)
-        
-        # Remove duplicates and rank by relevance
-        unique_suggestions = self._deduplicate_and_rank(suggestions)
-        
-        return unique_suggestions[:5]  # Return top 5 suggestions
-    
-    def _generate_rule_based_capas(self, incident_type: str, description: str, root_causes: List[str]) -> List[Dict]:
-        """Generate CAPAs using rule-based logic"""
-        suggestions = []
-        description_lower = description.lower()
-        
-        # Incident type specific suggestions
-        type_suggestions = {
-            "injury": [
-                {"type": "training", "action": "Provide additional safety training on injury prevention", "priority": "high"},
-                {"type": "engineering", "action": "Install additional safety equipment", "priority": "medium"}
-            ],
-            "environmental": [
-                {"type": "procedure", "action": "Update spill response procedures", "priority": "high"},
-                {"type": "engineering", "action": "Install secondary containment", "priority": "high"}
-            ],
-            "near_miss": [
-                {"type": "inspection", "action": "Increase safety inspections", "priority": "medium"},
-                {"type": "communication", "action": "Improve hazard communication", "priority": "medium"}
-            ]
-        }
-        
-        suggestions.extend(type_suggestions.get(incident_type, []))
-        
-        # Keyword-based suggestions
-        if "training" in description_lower or "procedure" in description_lower:
-            suggestions.append({
-                "type": "training",
-                "action": "Conduct additional safety training",
-                "priority": "high"
-            })
-        
-        if "equipment" in description_lower or "maintenance" in description_lower:
-            suggestions.append({
-                "type": "inspection",
-                "action": "Implement preventive maintenance program",
-                "priority": "medium"
-            })
-        
-        return suggestions
-    
-    def _generate_sbert_capas(self, description: str, root_causes: List[str]) -> List[Dict]:
-        """Generate CAPAs using SBERT similarity (placeholder)"""
-        # This would implement semantic similarity against a database of previous CAPAs
-        # For now, return empty list
-        return []
-    
-    def _deduplicate_and_rank(self, suggestions: List[Dict]) -> List[Dict]:
-        """Remove duplicates and rank suggestions"""
-        unique_suggestions = []
-        seen_actions = set()
-        
-        # Priority order
-        priority_order = {"high": 3, "medium": 2, "low": 1}
-        
-        for suggestion in sorted(suggestions, key=lambda x: priority_order.get(x.get("priority", "low"), 1), reverse=True):
-            action = suggestion.get("action", "")
-            if action not in seen_actions:
-                seen_actions.add(action)
-                unique_suggestions.append(suggestion)
-        
-        return unique_suggestions
-
-# Enhanced validation functions
 def compute_completeness(rec: Dict) -> int:
-    """Compute completeness percentage with enhanced criteria"""
+    """Enhanced completeness calculation"""
     answers = rec.get("answers", {})
+    chatbot_data = rec.get("chatbot_data", {})
     
-    # Basic field completion (40% weight)
+    # Basic field completion (30% weight)
     filled_categories = sum(1 for c in ALL_CATEGORIES if (answers.get(c) or "").strip())
-    basic_score = (filled_categories / len(ALL_CATEGORIES)) * 40
+    basic_score = (filled_categories / len(ALL_CATEGORIES)) * 30
     
-    # Required category completion (30% weight)
+    # Required category completion (40% weight)
     incident_type = (rec.get("type") or "other").lower().replace(" ", "_")
     required = REQUIRED_BY_TYPE.get(incident_type, ALL_CATEGORIES)
     required_filled = sum(1 for c in required if (answers.get(c) or "").strip())
-    required_score = (required_filled / len(required)) * 30 if required else 0
+    required_score = (required_filled / len(required)) * 40 if required else 0
     
-    # Additional metadata completion (30% weight)
-    metadata_fields = ["location", "timestamp", "reporter", "witness_info", "photos"]
-    metadata_filled = sum(1 for field in metadata_fields if rec.get(field))
+    # Enhanced metadata completion (30% weight)
+    metadata_fields = ["location", "timestamp", "reporter", "responsible_person"]
+    metadata_filled = 0
+    
+    # Check chatbot data for additional fields
+    if chatbot_data.get("location"):
+        metadata_filled += 1
+    if chatbot_data.get("responsible_person"):
+        metadata_filled += 1
+    if rec.get("created_ts"):
+        metadata_filled += 1
+    if chatbot_data.get("injured_person") or chatbot_data.get("people_involved"):
+        metadata_filled += 1
+    
     metadata_score = (metadata_filled / len(metadata_fields)) * 30
     
-    return int(basic_score + required_score + metadata_score)
+    return min(100, int(basic_score + required_score + metadata_score))
 
-def validate_record(rec: Dict) -> Tuple[bool, List[str]]:
+def validate_record(rec: Dict) -> Tuple[bool, List[str], List[str]]:
     """Enhanced validation with detailed feedback"""
     incident_type = (rec.get("type") or "other").lower().replace(" ", "_")
     required = REQUIRED_BY_TYPE.get(incident_type, REQUIRED_BY_TYPE["other"])
     answers = rec.get("answers", {})
+    chatbot_data = rec.get("chatbot_data", {})
     
     missing = []
     warnings = []
@@ -434,42 +437,101 @@ def validate_record(rec: Dict) -> Tuple[bool, List[str]]:
         elif len(content) < 10:
             warnings.append(f"{category} (needs more detail)")
     
-    # Check for critical missing information
-    if incident_type == "injury" and not rec.get("severity"):
-        missing.append("injury severity")
+    # Check for enhanced requirements
+    if incident_type == "injury":
+        if not chatbot_data.get("injured_person") and not chatbot_data.get("people_involved"):
+            warnings.append("injured person name (for proper documentation)")
+        if not chatbot_data.get("severity"):
+            warnings.append("injury severity assessment")
     
-    if incident_type == "environmental" and not rec.get("chemical_info"):
-        missing.append("chemical information")
+    if "environmental" in incident_type:
+        if not chatbot_data.get("chemical_name"):
+            warnings.append("chemical/substance identification")
+        if not chatbot_data.get("containment"):
+            warnings.append("containment measures taken")
+    
+    # Check for responsible person
+    if not chatbot_data.get("responsible_person"):
+        warnings.append("responsible person for follow-up")
     
     is_valid = len(missing) == 0
     return is_valid, missing, warnings
 
-def generate_scoring_and_capas(incident_data: Dict) -> Dict:
-    """Generate comprehensive scoring and CAPA suggestions"""
+def generate_enhanced_scoring_and_recommendations(incident_data: Dict) -> Dict:
+    """Generate comprehensive scoring and recommendations"""
     
-    # Initialize components
-    scorer = IncidentScoring()
-    rca = RootCauseAnalysis()
-    capa_gen = CAPAGenerator()
+    # Initialize enhanced scorer
+    scorer = EnhancedIncidentScoring()
     
-    # Compute risk scoring
-    scoring_result = scorer.compute_severity_likelihood(incident_data)
+    # Perform comprehensive risk assessment
+    risk_assessment = scorer.assess_comprehensive_risk(incident_data)
     
-    # Generate 5 Whys prompts
-    description = incident_data.get("answers", {}).get("people", "") or \
-                 incident_data.get("answers", {}).get("environment", "") or \
-                 "Incident occurred"
+    # Calculate completeness
+    completeness = compute_completeness(incident_data)
     
-    whys_prompts = rca.generate_5_whys_prompts(description)
+    # Validate record
+    is_valid, missing, warnings = validate_record(incident_data)
     
-    # Generate CAPA suggestions (using dummy root causes for now)
-    root_causes = ["Procedure not followed", "Training insufficient", "Equipment malfunction"]
-    capa_suggestions = capa_gen.suggest_capas(incident_data, root_causes)
+    # Generate automatic CAPA suggestions based on risk
+    capa_suggestions = generate_risk_based_capas(risk_assessment, incident_data)
     
     return {
-        "scoring": scoring_result,
-        "five_whys_prompts": whys_prompts,
+        "risk_assessment": risk_assessment,
+        "completeness": completeness,
+        "validation": {
+            "is_valid": is_valid,
+            "missing": missing,
+            "warnings": warnings
+        },
         "capa_suggestions": capa_suggestions,
-        "completeness": compute_completeness(incident_data),
-        "validation": validate_record(incident_data)
+        "recommendations": risk_assessment["recommendations"]
     }
+
+def generate_risk_based_capas(risk_assessment: Dict, incident_data: Dict) -> List[Dict]:
+    """Generate CAPA suggestions based on risk assessment"""
+    suggestions = []
+    
+    risk_level = risk_assessment["risk_level"]
+    incident_types = incident_data.get("incident_types", [incident_data.get("type", "other")])
+    severities = risk_assessment["severities"]
+    
+    # High priority CAPAs for high-risk incidents
+    if risk_level in ["Critical", "High"]:
+        suggestions.append({
+            "title": "Immediate Risk Control Review",
+            "description": "Comprehensive review and enhancement of risk controls",
+            "type": "corrective",
+            "priority": "critical" if risk_level == "Critical" else "high",
+            "due_days": 7 if risk_level == "Critical" else 14
+        })
+    
+    # Incident type specific CAPAs
+    if "injury" in incident_types:
+        if severities.get("people", {}).get("score", 0) >= 6:
+            suggestions.append({
+                "title": "Enhanced Safety Training Program",
+                "description": "Develop and implement enhanced safety training for affected work area",
+                "type": "preventive",
+                "priority": "high",
+                "due_days": 30
+            })
+    
+    if "environmental" in incident_types:
+        suggestions.append({
+            "title": "Spill Prevention and Response Review",
+            "description": "Review and update spill prevention measures and response procedures",
+            "type": "corrective",
+            "priority": "medium",
+            "due_days": 21
+        })
+    
+    if len(incident_types) > 1:
+        suggestions.append({
+            "title": "Integrated Safety Management Review",
+            "description": "Comprehensive review of integrated safety management systems",
+            "type": "preventive",
+            "priority": "high",
+            "due_days": 45
+        })
+    
+    return suggestions
