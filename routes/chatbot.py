@@ -351,4 +351,261 @@ def get_lightweight_fallback_response(message, uploaded_file=None, debug_info=No
             }
         elif file_type == 'application/pdf':
             return {
-                "message": f"📄 **PDF received: {filename}**\n\nThis
+                "message": f"📄 **PDF received: {filename}**\n\nThis could be a Safety Data Sheet or documentation.",
+                "type": "file_upload",
+                "actions": [
+                    {"text": "📋 Add to SDS Library", "action": "navigate", "url": "/sds/upload"}
+                ],
+                "debug_info": debug_info
+            }
+    
+    # Enhanced keyword-based responses
+    if any(word in message_lower for word in ["incident", "accident", "injury", "hurt", "damage", "spill", "report"]):
+        return {
+            "message": "🚨 **I'll help you report this incident.**\n\nTo ensure we capture all necessary details, please choose the type of incident:",
+            "type": "incident_help",
+            "actions": [
+                {"text": "🩹 Injury/Medical", "action": "navigate", "url": "/incidents/new?type=injury"},
+                {"text": "🚗 Vehicle Incident", "action": "navigate", "url": "/incidents/new?type=vehicle"},
+                {"text": "🌊 Environmental/Spill", "action": "navigate", "url": "/incidents/new?type=environmental"},
+                {"text": "💔 Property Damage", "action": "navigate", "url": "/incidents/new?type=property"},
+                {"text": "⚠️ Near Miss", "action": "navigate", "url": "/incidents/new?type=near_miss"},
+                {"text": "📝 Other Incident", "action": "navigate", "url": "/incidents/new"}
+            ],
+            "quick_replies": [
+                "Someone was injured",
+                "There was property damage",
+                "Chemical spill occurred",
+                "It was a near miss",
+                "Vehicle accident"
+            ],
+            "guidance": "**Remember:** If anyone needs immediate medical attention, call 911 first.",
+            "debug_info": debug_info
+        }
+    
+    elif any(word in message_lower for word in ["safety", "concern", "unsafe", "hazard"]):
+        return {
+            "message": "🛡️ **Thank you for speaking up about safety!**\n\nEvery safety observation helps create a safer workplace.",
+            "type": "safety_help",
+            "actions": [
+                {"text": "⚠️ Report Safety Concern", "action": "navigate", "url": "/safety-concerns/new"},
+                {"text": "📞 Anonymous Report", "action": "navigate", "url": "/safety-concerns/new?anonymous=true"}
+            ],
+            "debug_info": debug_info
+        }
+    
+    elif any(word in message_lower for word in ["sds", "chemical", "safety data sheet", "msds"]):
+        return {
+            "message": "📄 **I'll help you find Safety Data Sheets.**\n\nOur SDS library is searchable and easy to navigate.",
+            "type": "sds_help",
+            "actions": [
+                {"text": "🔍 Search SDS Library", "action": "navigate", "url": "/sds"},
+                {"text": "📤 Upload New SDS", "action": "navigate", "url": "/sds/upload"}
+            ],
+            "debug_info": debug_info
+        }
+    
+    elif any(word in message_lower for word in ["emergency", "911", "fire", "urgent"]):
+        return {
+            "message": "🚨 **EMERGENCY DETECTED**\n\n**FOR LIFE-THREATENING EMERGENCIES: CALL 911 IMMEDIATELY**\n\n**Site Emergency Contacts:**\n• Site Emergency: (555) 123-4567\n• Security: (555) 123-4568",
+            "type": "emergency",
+            "actions": [
+                {"text": "📝 Report Emergency Incident", "action": "navigate", "url": "/incidents/new?type=emergency"}
+            ],
+            "debug_info": debug_info
+        }
+    
+    else:
+        # Default comprehensive help
+        return {
+            "message": "🤖 **I'm your EHS Assistant!**\n\nI can help you with:\n\n• 🚨 **Report incidents** and safety concerns\n• 📊 **Navigate the system** and find information\n• 📄 **Find safety data sheets** and documentation\n• 🔄 **Get guidance** on EHS procedures\n\nWhat would you like to work on?",
+            "type": "general_help",
+            "actions": [
+                {"text": "🚨 Report Incident", "action": "navigate", "url": "/incidents/new"},
+                {"text": "🛡️ Safety Concern", "action": "navigate", "url": "/safety-concerns/new"},
+                {"text": "📊 Dashboard", "action": "navigate", "url": "/dashboard"},
+                {"text": "📄 Find SDS", "action": "navigate", "url": "/sds"}
+            ],
+            "quick_replies": [
+                "Report an incident",
+                "Safety concern",
+                "Find SDS",
+                "What's urgent?"
+            ],
+            "debug_info": debug_info
+        }
+
+# Debug route to help troubleshoot
+@chatbot_bp.route("/chat/debug", methods=["GET"])
+def chat_debug():
+    """Comprehensive debug endpoint to check chatbot status"""
+    chatbot = get_chatbot()
+    
+    debug_info = {
+        "timestamp": time.time(),
+        "chatbot_available": chatbot is not None,
+        "chatbot_type": type(chatbot).__name__ if chatbot else None,
+        "chatbot_instance_id": id(chatbot) if chatbot else None,
+        "current_mode": getattr(chatbot, 'current_mode', 'unknown') if chatbot else None,
+        "current_context": getattr(chatbot, 'current_context', {}) if chatbot else {},
+        "slot_filling_state": getattr(chatbot, 'slot_filling_state', {}) if chatbot else {},
+        "conversation_history_length": len(getattr(chatbot, 'conversation_history', [])) if chatbot else 0,
+        "import_status": {
+            "services_ehs_chatbot": "OK" if CHATBOT_AVAILABLE else "FAILED"
+        },
+        "environment": {
+            "flask_env": os.environ.get("FLASK_ENV", "production"),
+            "enable_sbert": os.environ.get("ENABLE_SBERT", "false"),
+            "python_version": os.sys.version
+        },
+        "file_system": {
+            "data_dir_exists": os.path.exists("data"),
+            "uploads_dir_exists": os.path.exists("static/uploads"),
+            "incidents_file_exists": os.path.exists("data/incidents.json")
+        }
+    }
+    
+    # Test basic functionality if chatbot available
+    if chatbot:
+        try:
+            test_response = chatbot.process_message("test message", "debug_user")
+            debug_info["test_response"] = {
+                "success": True,
+                "type": test_response.get("type", "unknown"),
+                "has_message": bool(test_response.get("message"))
+            }
+        except Exception as e:
+            debug_info["test_response"] = {
+                "success": False,
+                "error": str(e)
+            }
+    
+    return jsonify(debug_info)
+
+# Test route for quick incident type detection
+@chatbot_bp.route("/chat/test-intent", methods=["POST"])
+def test_intent():
+    """Test intent detection with debugging"""
+    data = request.get_json()
+    message = data.get("message", "")
+    
+    chatbot = get_chatbot()
+    if chatbot and hasattr(chatbot, 'intent_classifier'):
+        try:
+            intent, confidence = chatbot.intent_classifier.classify_intent(message)
+            
+            # Additional debugging for intent classification
+            debug_info = {
+                "message": message,
+                "intent": intent,
+                "confidence": confidence,
+                "status": "success",
+                "classifier_type": type(chatbot.intent_classifier).__name__,
+                "patterns_matched": []
+            }
+            
+            # Check which patterns matched
+            if hasattr(chatbot.intent_classifier, 'rule_patterns'):
+                for pattern_name, patterns in chatbot.intent_classifier.rule_patterns.items():
+                    for pattern in patterns:
+                        import re
+                        if re.search(pattern, message.lower()):
+                            debug_info["patterns_matched"].append({
+                                "pattern_group": pattern_name,
+                                "pattern": pattern
+                            })
+            
+            return jsonify(debug_info)
+            
+        except Exception as e:
+            return jsonify({
+                "message": message,
+                "error": str(e),
+                "status": "error",
+                "traceback": str(e) if os.getenv("FLASK_ENV") == "development" else None
+            })
+    else:
+        return jsonify({
+            "message": message,
+            "error": "Chatbot or intent classifier not available",
+            "status": "unavailable",
+            "chatbot_available": chatbot is not None,
+            "has_intent_classifier": hasattr(chatbot, 'intent_classifier') if chatbot else False
+        })
+
+@chatbot_bp.route("/chat/reset", methods=["POST"])
+def reset_chat():
+    """Reset chat session with debugging"""
+    chatbot = get_chatbot()
+    if chatbot:
+        try:
+            old_state = {
+                "mode": getattr(chatbot, 'current_mode', 'unknown'),
+                "context": dict(getattr(chatbot, 'current_context', {})),
+                "slot_state": dict(getattr(chatbot, 'slot_filling_state', {}))
+            }
+            
+            chatbot.current_mode = 'general'
+            chatbot.current_context = {}
+            chatbot.slot_filling_state = {}
+            
+            new_state = {
+                "mode": getattr(chatbot, 'current_mode', 'unknown'),
+                "context": dict(getattr(chatbot, 'current_context', {})),
+                "slot_state": dict(getattr(chatbot, 'slot_filling_state', {}))
+            }
+            
+            return jsonify({
+                "status": "reset", 
+                "message": "Chat session reset successfully",
+                "old_state": old_state,
+                "new_state": new_state
+            })
+        except Exception as e:
+            return jsonify({
+                "status": "error", 
+                "message": f"Reset failed: {str(e)}",
+                "error_details": str(e)
+            })
+    return jsonify({
+        "status": "error", 
+        "message": "Chatbot not available",
+        "chatbot_available": False
+    })
+
+@chatbot_bp.route("/chat/status")
+def chat_status():
+    """Get comprehensive system status with detailed debugging"""
+    chatbot = get_chatbot()
+    
+    status = {
+        "timestamp": time.time(),
+        "chatbot_available": chatbot is not None,
+        "current_mode": getattr(chatbot, 'current_mode', 'unavailable') if chatbot else 'unavailable',
+        "memory_optimized": True,
+        "ml_features": False,
+        "features": {
+            "file_upload": True,
+            "basic_intent_classification": chatbot is not None,
+            "slot_filling": chatbot is not None,
+            "rule_based_responses": True,
+            "sbert_embeddings": False,
+            "advanced_ai": False
+        },
+        "debug": {
+            "chatbot_class": type(chatbot).__name__ if chatbot else None,
+            "has_intent_classifier": hasattr(chatbot, 'intent_classifier') if chatbot else False,
+            "has_slot_policy": hasattr(chatbot, 'slot_policy') if chatbot else False,
+            "conversation_count": len(getattr(chatbot, 'conversation_history', [])) if chatbot else 0,
+            "intent_classifier_type": type(getattr(chatbot, 'intent_classifier', None)).__name__ if chatbot and hasattr(chatbot, 'intent_classifier') else None,
+            "slot_policy_type": type(getattr(chatbot, 'slot_policy', None)).__name__ if chatbot and hasattr(chatbot, 'slot_policy') else None
+        },
+        "system_info": {
+            "python_version": os.sys.version.split()[0],
+            "flask_env": os.environ.get("FLASK_ENV", "production"),
+            "data_directory_exists": os.path.exists("data"),
+            "uploads_directory_exists": os.path.exists("static/uploads")
+        }
+    }
+    
+    return jsonify(status)
