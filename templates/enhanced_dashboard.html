@@ -1,4 +1,4 @@
-<!-- templates/enhanced_dashboard.html - Chat-First Interface -->
+<!-- templates/enhanced_dashboard.html - Fixed Chat-First Interface with File Upload -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -131,7 +131,7 @@
             border-bottom: 1px solid #e5e7eb;
             background: white;
             display: flex;
-            justify-content: between;
+            justify-content: space-between;
             align-items: center;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
@@ -280,7 +280,7 @@
 
         .form-widget-header {
             display: flex;
-            justify-content: between;
+            justify-content: space-between;
             align-items: center;
             margin-bottom: 1rem;
         }
@@ -335,11 +335,14 @@
             position: relative;
             max-width: 800px;
             margin: 0 auto;
+            display: flex;
+            align-items: flex-end;
+            gap: 0.5rem;
         }
 
         .chat-input-field {
-            width: 100%;
-            padding: 1rem 3.5rem 1rem 1rem;
+            flex: 1;
+            padding: 1rem 1rem;
             border: 2px solid #e5e7eb;
             border-radius: 1rem;
             font-size: 1rem;
@@ -355,21 +358,32 @@
             box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
         }
 
-        .send-button {
-            position: absolute;
-            right: 0.5rem;
-            bottom: 0.5rem;
+        .input-buttons {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .upload-button, .send-button {
             background: var(--primary-color);
             border: none;
             color: white;
-            width: 40px;
-            height: 40px;
-            border-radius: 0.5rem;
+            width: 50px;
+            height: 50px;
+            border-radius: 0.75rem;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
             transition: all 0.2s;
+            font-size: 1.1rem;
+        }
+
+        .upload-button {
+            background: var(--secondary-color);
+        }
+
+        .upload-button:hover {
+            background: #475569;
         }
 
         .send-button:hover {
@@ -379,6 +393,34 @@
         .send-button:disabled {
             background: #9ca3af;
             cursor: not-allowed;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .file-preview {
+            margin-top: 0.5rem;
+            padding: 0.5rem;
+            background: #f3f4f6;
+            border-radius: 0.5rem;
+            display: none;
+        }
+
+        .file-preview-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .file-remove {
+            background: none;
+            border: none;
+            color: #ef4444;
+            cursor: pointer;
+            padding: 0;
+            font-size: 1rem;
         }
 
         /* Typing Indicator */
@@ -558,7 +600,7 @@
                     <a href="/" class="nav-item active">
                         <i class="bi bi-robot"></i>AI Assistant
                     </a>
-                    <a href="/dashboard/analytics" class="nav-item">
+                    <a href="/dashboard" class="nav-item">
                         <i class="bi bi-graph-up"></i>Analytics
                     </a>
                 </div>
@@ -596,15 +638,15 @@
             <div class="sidebar-stats">
                 <div class="stat-item">
                     <span>Open Incidents</span>
-                    <span class="stat-value" id="openIncidents">{{ stats.incidents.open|default(0) }}</span>
+                    <span class="stat-value" id="openIncidents">0</span>
                 </div>
                 <div class="stat-item">
                     <span>Overdue CAPAs</span>
-                    <span class="stat-value" id="overdueCapas">{{ stats.capas.overdue|default(0) }}</span>
+                    <span class="stat-value" id="overdueCapas">0</span>
                 </div>
                 <div class="stat-item">
                     <span>Safety Concerns</span>
-                    <span class="stat-value" id="safetyConcerns">{{ stats.safety_concerns.open|default(0) }}</span>
+                    <span class="stat-value" id="safetyConcerns">0</span>
                 </div>
                 <div class="stat-item">
                     <span>System Status</span>
@@ -699,17 +741,34 @@
             <!-- Chat Input -->
             <div class="chat-input">
                 <div class="input-container">
-                    <textarea 
-                        class="chat-input-field" 
-                        id="messageInput" 
-                        placeholder="Ask me anything about EHS... (e.g., 'Help me report an incident' or 'What CAPAs are overdue?')"
-                        rows="1"
-                        onkeydown="handleKeyDown(event)"
-                        oninput="autoResize(this)">
-                    </textarea>
-                    <button class="send-button" id="sendButton" onclick="sendMessage()">
-                        <i class="bi bi-send"></i>
-                    </button>
+                    <div style="flex: 1;">
+                        <textarea 
+                            class="chat-input-field" 
+                            id="messageInput" 
+                            placeholder="Ask me anything about EHS... (e.g., 'Help me report an incident' or 'What CAPAs are overdue?')"
+                            rows="1"
+                            onkeydown="handleKeyDown(event)"
+                            oninput="autoResize(this)">
+                        </textarea>
+                        <div class="file-preview" id="filePreview">
+                            <div class="file-preview-item" id="filePreviewItem">
+                                <i class="bi bi-file-earmark"></i>
+                                <span id="fileName"></span>
+                                <button type="button" class="file-remove" onclick="removeFile()">
+                                    <i class="bi bi-x"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="input-buttons">
+                        <button class="upload-button" onclick="triggerFileUpload()" title="Upload file">
+                            <i class="bi bi-paperclip"></i>
+                        </button>
+                        <button class="send-button" id="sendButton" onclick="sendMessage()" title="Send message">
+                            <i class="bi bi-send"></i>
+                        </button>
+                    </div>
+                    <input type="file" id="fileInput" class="file-input" onchange="handleFileSelect(event)" accept="image/*,.pdf,.doc,.docx,.txt">
                 </div>
             </div>
         </div>
@@ -720,6 +779,7 @@
         // Global state
         let conversationHistory = [];
         let isWaitingForResponse = false;
+        let selectedFile = null;
 
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
@@ -746,11 +806,50 @@
             textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
         }
 
+        function triggerFileUpload() {
+            document.getElementById('fileInput').click();
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                selectedFile = file;
+                showFilePreview(file);
+            }
+        }
+
+        function showFilePreview(file) {
+            const preview = document.getElementById('filePreview');
+            const fileName = document.getElementById('fileName');
+            const fileIcon = preview.querySelector('i');
+            
+            fileName.textContent = file.name;
+            
+            // Update icon based on file type
+            if (file.type.startsWith('image/')) {
+                fileIcon.className = 'bi bi-image';
+            } else if (file.type === 'application/pdf') {
+                fileIcon.className = 'bi bi-file-earmark-pdf';
+            } else if (file.type.includes('word')) {
+                fileIcon.className = 'bi bi-file-earmark-word';
+            } else {
+                fileIcon.className = 'bi bi-file-earmark';
+            }
+            
+            preview.style.display = 'block';
+        }
+
+        function removeFile() {
+            selectedFile = null;
+            document.getElementById('fileInput').value = '';
+            document.getElementById('filePreview').style.display = 'none';
+        }
+
         function sendMessage(predefinedMessage) {
             const input = document.getElementById('messageInput');
             const message = predefinedMessage || input.value.trim();
             
-            if (!message || isWaitingForResponse) return;
+            if ((!message && !selectedFile) || isWaitingForResponse) return;
             
             // Hide welcome screen
             const welcomeScreen = document.getElementById('welcomeScreen');
@@ -759,11 +858,12 @@
             }
             
             // Add user message
-            addMessage('user', message);
+            addMessage('user', message, selectedFile);
             
             // Clear input
             input.value = '';
             input.style.height = 'auto';
+            removeFile();
             
             // Show typing indicator
             showTyping();
@@ -772,33 +872,37 @@
             isWaitingForResponse = true;
             document.getElementById('sendButton').disabled = true;
             
+            // Prepare form data for API call
+            const formData = new FormData();
+            formData.append('message', message);
+            formData.append('user_id', 'main_chat_user');
+            formData.append('context', JSON.stringify({
+                conversation_history: conversationHistory.slice(-10),
+                current_page: 'main_chat',
+                timestamp: new Date().toISOString()
+            }));
+            
+            if (selectedFile) {
+                formData.append('file', selectedFile);
+            }
+            
             // Send to API
             fetch('/chat', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    message: message,
-                    user_id: 'main_chat_user',
-                    context: {
-                        conversation_history: conversationHistory.slice(-10),
-                        current_page: 'main_chat',
-                        timestamp: new Date().toISOString()
-                    }
-                })
+                body: formData
             })
             .then(response => response.json())
             .then(data => {
                 hideTyping();
-                addMessage('assistant', data.message, data);
+                addMessage('assistant', data.message, null, data);
                 
                 // Store in history
                 conversationHistory.push({
                     user: message,
                     assistant: data.message,
                     timestamp: new Date().toISOString(),
-                    actions: data.actions || []
+                    actions: data.actions || [],
+                    had_file: !!selectedFile
                 });
                 
                 // Re-enable input
@@ -808,7 +912,7 @@
             })
             .catch(error => {
                 hideTyping();
-                addMessage('assistant', "I apologize, but I'm having trouble connecting right now. Please try again, or if the problem persists, you can navigate to the specific modules using the sidebar.", null);
+                addMessage('assistant', "I apologize, but I'm having trouble connecting right now. Please try again, or if the problem persists, you can navigate to the specific modules using the sidebar.", null, null);
                 console.error('Chat error:', error);
                 
                 // Re-enable input
@@ -817,7 +921,7 @@
             });
         }
 
-        function addMessage(sender, content, data = null) {
+        function addMessage(sender, content, file = null, data = null) {
             const messagesContainer = document.getElementById('chatMessages');
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message';
@@ -837,6 +941,18 @@
                     ${formatMessageContent(content)}
                 </div>
             `;
+            
+            // Add file attachment display for user messages
+            if (sender === 'user' && file) {
+                messageHTML += `
+                    <div class="message-content">
+                        <div class="file-attachment">
+                            <i class="bi bi-paperclip me-2"></i>
+                            <span class="text-muted">Attached: ${file.name}</span>
+                        </div>
+                    </div>
+                `;
+            }
             
             // Add action buttons if provided
             if (data && data.actions && data.actions.length > 0) {
@@ -879,6 +995,7 @@
         }
 
         function formatMessageContent(content) {
+            if (!content) return '';
             // Convert markdown-like formatting to HTML
             return content
                 .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -903,4 +1020,124 @@
                         formHTML += generateFieldHTML(subField);
                     });
                     formHTML += '</div>';
-                } else
+                } else {
+                    formHTML += generateFieldHTML(field);
+                }
+            });
+            
+            formHTML += `
+                        <div class="mt-3">
+                            <button type="submit" class="btn btn-primary">Submit</button>
+                            <button type="button" class="btn btn-secondary ms-2" onclick="cancelForm()">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            
+            return formHTML;
+        }
+
+        function generateFieldHTML(field) {
+            let fieldHTML = '<div class="form-group">';
+            
+            fieldHTML += `<label class="form-label">${field.label}${field.required ? ' <span class="text-danger">*</span>' : ''}</label>`;
+            
+            switch (field.type) {
+                case 'text':
+                    fieldHTML += `<input type="text" class="form-control" name="${field.name}" ${field.required ? 'required' : ''} placeholder="${field.placeholder || ''}">`;
+                    break;
+                case 'textarea':
+                    fieldHTML += `<textarea class="form-control" name="${field.name}" rows="${field.rows || 3}" ${field.required ? 'required' : ''} placeholder="${field.placeholder || ''}"></textarea>`;
+                    break;
+                case 'select':
+                    fieldHTML += `<select class="form-control" name="${field.name}" ${field.required ? 'required' : ''}>`;
+                    field.options.forEach(option => {
+                        fieldHTML += `<option value="${option.value}">${option.label}</option>`;
+                    });
+                    fieldHTML += '</select>';
+                    break;
+                case 'date':
+                    fieldHTML += `<input type="date" class="form-control" name="${field.name}" ${field.required ? 'required' : ''}>`;
+                    break;
+            }
+            
+            fieldHTML += '</div>';
+            return fieldHTML;
+        }
+
+        function submitAssistantForm(event) {
+            event.preventDefault();
+            
+            const formData = new FormData(event.target);
+            const data = Object.fromEntries(formData.entries());
+            
+            // Send form data back to chatbot
+            sendMessage(`Here's the completed form data: ${JSON.stringify(data)}`);
+            
+            // Remove form widget
+            event.target.closest('.form-widget').remove();
+        }
+
+        function cancelForm() {
+            const formWidget = document.querySelector('.form-widget');
+            if (formWidget) {
+                formWidget.remove();
+            }
+            sendMessage('I cancelled the form. What else can I help you with?');
+        }
+
+        function showTyping() {
+            document.getElementById('typingIndicator').style.display = 'block';
+            scrollToBottom();
+        }
+
+        function hideTyping() {
+            document.getElementById('typingIndicator').style.display = 'none';
+        }
+
+        function scrollToBottom() {
+            const messagesContainer = document.getElementById('chatMessages');
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function loadStats() {
+            // Load real-time statistics from API
+            fetch('/api/stats')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.incidents) {
+                        document.getElementById('openIncidents').textContent = data.incidents.open || 0;
+                    }
+                    if (data.capas) {
+                        document.getElementById('overdueCapas').textContent = data.capas.overdue || 0;
+                    }
+                    if (data.safety_concerns) {
+                        document.getElementById('safetyConcerns').textContent = data.safety_concerns.open || 0;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading stats:', error);
+                });
+        }
+
+        // Refresh stats every 5 minutes
+        setInterval(loadStats, 300000);
+
+        // Add CSS for file attachment display
+        const style = document.createElement('style');
+        style.textContent = `
+            .file-attachment {
+                background: #f3f4f6;
+                border: 1px solid #d1d5db;
+                border-radius: 0.5rem;
+                padding: 0.5rem 0.75rem;
+                margin-top: 0.5rem;
+                display: inline-flex;
+                align-items: center;
+                font-size: 0.875rem;
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>
