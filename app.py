@@ -1,4 +1,4 @@
-# app.py - FIXED VERSION with all routes properly registered and error handling
+# app.py - FIXED VERSION with proper error handling and route management
 import os
 import sys
 import json
@@ -20,250 +20,83 @@ def ensure_dirs():
         os.makedirs(directory, exist_ok=True)
 
 def create_app():
+    """Create Flask app with comprehensive error handling"""
     ensure_dirs()
     app = Flask(__name__)
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")
     app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB max file size
     
+    # Track loaded blueprints
     blueprints_loaded = []
+    blueprint_errors = []
     
-    # Register all blueprints with proper error handling
-    try:
-        from routes.sds import sds_bp
-        app.register_blueprint(sds_bp, url_prefix="/sds")
-        blueprints_loaded.append("SDS")
-        print("✓ SDS module loaded")
-    except ImportError as e:
-        print(f"⚠ SDS module not available: {e}")
-        # Create fallback SDS routes
-        @app.route("/sds")
-        def fallback_sds_list():
-            return render_template("fallback_module.html", 
-                                 module_name="SDS Library",
-                                 description="Safety Data Sheets module is loading...")
-        
-        @app.route("/sds/upload")
-        def fallback_sds_upload():
-            return redirect(url_for('fallback_sds_list'))
+    # Register blueprints with comprehensive error handling
+    blueprint_configs = [
+        ("routes.sds", "sds_bp", "/sds", "SDS"),
+        ("routes.incidents", "incidents_bp", "/incidents", "Incidents"),
+        ("routes.chatbot", "chatbot_bp", "/", "Enhanced Chatbot"),
+        ("routes.capa", "capa_bp", "/capa", "CAPA"),
+        ("routes.risk", "risk_bp", "/risk", "Risk Management"),
+        ("routes.safety_concerns", "safety_concerns_bp", "/safety-concerns", "Safety Concerns"),
+        ("routes.audits", "audits_bp", "/audits", "Audits & Inspections"),
+        ("routes.contractors", "contractors_bp", "/contractors", "Contractor Management")
+    ]
     
-    try:
-        from routes.incidents import incidents_bp
-        app.register_blueprint(incidents_bp, url_prefix="/incidents")
-        blueprints_loaded.append("Incidents")
-        print("✓ Incidents module loaded")
-    except ImportError as e:
-        print(f"⚠ Incidents module not available: {e}")
-        # Create fallback incident routes
-        @app.route("/incidents")
-        def fallback_incidents_list():
-            return render_template("fallback_module.html",
-                                 module_name="Incident Management", 
-                                 description="Incident reporting module is loading...")
-        
-        @app.route("/incidents/new")
-        def fallback_incidents_new():
-            return redirect(url_for('fallback_incidents_list'))
-        
-        @app.route("/incidents/<incident_id>/edit")
-        def fallback_incidents_edit(incident_id):
-            return redirect(url_for('fallback_incidents_list'))
+    for module_name, blueprint_name, url_prefix, display_name in blueprint_configs:
+        try:
+            module = __import__(module_name, fromlist=[blueprint_name])
+            blueprint = getattr(module, blueprint_name)
+            app.register_blueprint(blueprint, url_prefix=url_prefix)
+            blueprints_loaded.append(display_name)
+            print(f"✓ {display_name} module loaded")
+        except ImportError as e:
+            print(f"⚠ {display_name} module not available: {e}")
+            blueprint_errors.append(f"{display_name}: {str(e)}")
+            # Create fallback routes for critical modules
+            create_fallback_routes(app, url_prefix, display_name)
+        except Exception as e:
+            print(f"✗ Error loading {display_name}: {e}")
+            blueprint_errors.append(f"{display_name}: {str(e)}")
+            create_fallback_routes(app, url_prefix, display_name)
     
-    try:
-        from routes.chatbot import chatbot_bp
-        app.register_blueprint(chatbot_bp, url_prefix="/")
-        blueprints_loaded.append("Enhanced Chatbot")
-        print("✓ Enhanced Chatbot module loaded")
-    except ImportError as e:
-        print(f"⚠ Chatbot module not available: {e}")
-        # Fallback chat route
-        @app.route("/chat", methods=["GET", "POST"])
-        def fallback_chat():
-            if request.method == "GET":
-                return render_template("enhanced_dashboard.html")
-            return jsonify({
-                "message": "Chat service temporarily unavailable. Please use the navigation menu to access other features.",
-                "type": "error",
-                "actions": [
-                    {"text": "📝 Report Incident", "action": "navigate", "url": "/incidents/new"},
-                    {"text": "📊 Dashboard", "action": "navigate", "url": "/dashboard"}
-                ]
-            })
-    
-    # Register CAPA module
-    try:
-        from routes.capa import capa_bp
-        app.register_blueprint(capa_bp, url_prefix="/capa")
-        blueprints_loaded.append("CAPA")
-        print("✓ CAPA module loaded")
-    except ImportError as e:
-        print(f"⚠ CAPA module not available: {e}")
-        @app.route("/capa")
-        def fallback_capa_list():
-            return render_template("fallback_module.html", 
-                                 module_name="CAPA Management",
-                                 description="Corrective and Preventive Actions module is loading...")
-        
-        @app.route("/capa/new")
-        def fallback_capa_new():
-            return redirect(url_for('fallback_capa_list'))
-        
-        @app.route("/capa/<capa_id>")
-        def fallback_capa_detail(capa_id):
-            return redirect(url_for('fallback_capa_list'))
-    
-    # Register Risk module
-    try:
-        from routes.risk import risk_bp  
-        app.register_blueprint(risk_bp, url_prefix="/risk")
-        blueprints_loaded.append("Risk Management")
-        print("✓ Risk module loaded")
-    except ImportError as e:
-        print(f"⚠ Risk module not available: {e}")
-        @app.route("/risk/assess")
-        def fallback_risk_assess():
-            return render_template("fallback_module.html",
-                                 module_name="Risk Assessment",
-                                 description="Risk assessment module is loading...")
-        
-        @app.route("/risk/register")
-        def fallback_risk_register():
-            return redirect(url_for('fallback_risk_assess'))
-    
-    # Register Safety Concerns module
-    try:
-        from routes.safety_concerns import safety_concerns_bp
-        app.register_blueprint(safety_concerns_bp, url_prefix="/safety-concerns")
-        blueprints_loaded.append("Safety Concerns")
-        print("✓ Safety concerns module loaded")
-    except ImportError as e:
-        print(f"⚠ Safety concerns module not available: {e}")
-        @app.route("/safety-concerns")
-        def fallback_safety_concerns_list():
-            return render_template("fallback_module.html",
-                                 module_name="Safety Concerns",
-                                 description="Safety concerns module is loading...")
-        
-        @app.route("/safety-concerns/new")
-        def fallback_safety_concerns_new():
-            return redirect(url_for('fallback_safety_concerns_list'))
-        
-        @app.route("/safety-concerns/<concern_id>")
-        def fallback_safety_concerns_detail(concern_id):
-            return redirect(url_for('fallback_safety_concerns_list'))
-    
-    # Register Audits module
-    try:
-        from routes.audits import audits_bp
-        app.register_blueprint(audits_bp, url_prefix="/audits")
-        blueprints_loaded.append("Audits & Inspections")
-        print("✓ Audits module loaded")
-    except ImportError as e:
-        print(f"⚠ Audits module not available: {e}")
-        @app.route("/audits")
-        def fallback_audits_list():
-            return render_template("fallback_module.html",
-                                 module_name="Audits & Inspections",
-                                 description="Audits module is loading...")
-        
-        @app.route("/audits/new")
-        def fallback_audits_new():
-            return redirect(url_for('fallback_audits_list'))
-        
-        @app.route("/audits/<audit_id>")
-        def fallback_audits_detail(audit_id):
-            return redirect(url_for('fallback_audits_list'))
-    
-    # Register Contractors module
-    try:
-        from routes.contractors import contractors_bp
-        app.register_blueprint(contractors_bp, url_prefix="/contractors")
-        blueprints_loaded.append("Contractor Management")
-        print("✓ Contractors module loaded")
-    except ImportError as e:
-        print(f"⚠ Contractors module not available: {e}")
-        @app.route("/contractors")
-        def fallback_contractors_list():
-            return render_template("fallback_module.html",
-                                 module_name="Contractor Management",
-                                 description="Contractor management module is loading...")
-        
-        @app.route("/contractors/register")
-        def fallback_contractors_register():
-            return redirect(url_for('fallback_contractors_list'))
-
+    # Core application routes
     @app.route("/")
     def index():
-        """Main chat interface - enhanced dashboard"""
+        """Main dashboard route with error handling"""
         try:
-            try:
-                from services.dashboard_stats import get_dashboard_statistics
-                stats = get_dashboard_statistics()
-            except ImportError:
-                print("⚠ Dashboard stats service not available - using defaults")
-                stats = create_default_stats()
-            except Exception as e:
-                print(f"⚠ Error loading stats: {e}")
-                stats = create_default_stats()
+            stats = get_dashboard_statistics_safe()
+            return render_template("enhanced_dashboard.html", stats=stats)
         except Exception as e:
             print(f"⚠ Error in index route: {e}")
-            stats = create_default_stats()
-        
-        return render_template("enhanced_dashboard.html", stats=stats)
+            # Return basic dashboard
+            return render_template("enhanced_dashboard.html", stats=create_default_stats())
 
     @app.route("/dashboard")
     def dashboard():
         """Traditional dashboard view"""
         try:
-            try:
-                from services.dashboard_stats import get_dashboard_statistics
-                stats = get_dashboard_statistics()
-            except ImportError:
-                stats = create_default_stats()
-            except Exception as e:
-                print(f"Error loading dashboard stats: {e}")
-                stats = create_default_stats()
+            stats = get_dashboard_statistics_safe()
+            return render_template("dashboard.html", stats=stats)
         except Exception as e:
             print(f"Error in dashboard route: {e}")
-            stats = create_default_stats()
-            
-        return render_template("dashboard.html", stats=stats)
+            return render_template("dashboard.html", stats=create_default_stats())
     
     @app.route("/api/stats")
     def api_stats():
         """API endpoint for dashboard statistics"""
         try:
-            try:
-                from services.dashboard_stats import get_dashboard_statistics
-                stats = get_dashboard_statistics()
-                return jsonify(stats)
-            except ImportError:
-                stats = create_default_stats()
-                stats["message"] = "Stats service not available in memory-optimized mode"
-                stats["memory_optimized"] = True
-                return jsonify(stats)
+            stats = get_dashboard_statistics_safe()
+            return jsonify(stats)
         except Exception as e:
             print(f"Error in api_stats: {e}")
-            return jsonify({
-                "error": "Unable to load statistics",
-                "incidents": {"total": 0, "open": 0},
-                "safety_concerns": {"total": 0, "open": 0},
-                "capas": {"total": 0, "overdue": 0},
-                "sds": {"total": 0}
-            }), 500
+            return jsonify(create_default_stats()), 500
     
     @app.route("/api/recent-activity")
     def api_recent_activity():
         """API endpoint for recent activity feed"""
         try:
-            try:
-                from services.dashboard_stats import get_recent_activity
-                activity = get_recent_activity()
-                return jsonify(activity)
-            except ImportError:
-                return jsonify({
-                    "activities": [],
-                    "message": "Activity service not available"
-                })
+            activity = get_recent_activity_safe()
+            return jsonify(activity)
         except Exception as e:
             print(f"Error in api_recent_activity: {e}")
             return jsonify({
@@ -273,15 +106,16 @@ def create_app():
     
     @app.route("/health")
     def health_check():
-        """Enhanced health check with route verification"""
+        """Enhanced health check with detailed status"""
         health_status = {
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
-            "memory_optimized": True,
             "blueprints_loaded": blueprints_loaded,
+            "blueprint_errors": blueprint_errors,
             "modules": {
                 "core_count": len(blueprints_loaded),
-                "chatbot_type": "enhanced" if "Enhanced Chatbot" in blueprints_loaded else "fallback"
+                "error_count": len(blueprint_errors),
+                "chatbot_available": "Enhanced Chatbot" in blueprints_loaded
             },
             "storage": {
                 "data_directory": os.path.exists("data"),
@@ -290,28 +124,21 @@ def create_app():
                 "uploads_directory": os.path.exists("static/uploads")
             },
             "environment": {
-                "sbert_enabled": os.getenv("ENABLE_SBERT", "false").lower() == "true",
                 "python_version": sys.version.split()[0],
                 "flask_env": os.environ.get("FLASK_ENV", "production")
-            },
-            "routes": {
-                "incidents": "Incidents" in blueprints_loaded,
-                "safety_concerns": "Safety Concerns" in blueprints_loaded,
-                "capa": "CAPA" in blueprints_loaded,
-                "risk": "Risk Management" in blueprints_loaded,
-                "audits": "Audits & Inspections" in blueprints_loaded,
-                "contractors": "Contractor Management" in blueprints_loaded,
-                "sds": "SDS" in blueprints_loaded,
-                "chatbot": "Enhanced Chatbot" in blueprints_loaded
             }
         }
         
-        critical_modules = ["SDS", "Incidents", "Enhanced Chatbot"]
-        critical_modules_ok = any(module in blueprints_loaded for module in critical_modules)
+        # Determine overall health
+        critical_modules = ["Enhanced Chatbot", "Incidents", "SDS"]
+        critical_available = sum(1 for module in critical_modules if module in blueprints_loaded)
         
-        if not critical_modules_ok:
+        if critical_available < 2:
             health_status["status"] = "degraded"
-            health_status["warning"] = "Some core modules not available"
+            health_status["warning"] = "Critical modules not available"
+        elif blueprint_errors:
+            health_status["status"] = "partial"
+            health_status["warning"] = "Some modules have errors"
         
         status_code = 200 if health_status["status"] == "healthy" else 503
         return jsonify(health_status), status_code
@@ -339,6 +166,17 @@ def create_app():
     @app.errorhandler(413)
     def too_large(error):
         return jsonify({"error": "File too large. Maximum size is 16MB."}), 413
+    
+    @app.errorhandler(502)
+    def bad_gateway(error):
+        """Handle 502 errors"""
+        print(f"Bad Gateway error: {error}")
+        if request.path.startswith('/api/'):
+            return jsonify({"error": "Service temporarily unavailable"}), 502
+        
+        return render_template("error_500.html", 
+                             blueprints_loaded=blueprints_loaded,
+                             error_type="502 Bad Gateway"), 502
     
     # Template filters
     @app.template_filter('timeago')
@@ -377,7 +215,7 @@ def create_app():
         }
         return badge_map.get(str(priority).lower(), "secondary")
     
-    # Jinja2 moment filter for date handling
+    # Global template helper for moment-like functionality
     try:
         from datetime import datetime as dt
         
@@ -422,6 +260,42 @@ def create_app():
     
     return app
 
+def create_fallback_routes(app, url_prefix, module_name):
+    """Create fallback routes for unavailable modules"""
+    @app.route(f"{url_prefix}")
+    @app.route(f"{url_prefix}/")
+    def fallback_list():
+        return render_template("fallback_module.html", 
+                             module_name=module_name,
+                             description=f"{module_name} module is loading...")
+    
+    @app.route(f"{url_prefix}/new")
+    def fallback_new():
+        return redirect(url_for('fallback_list'))
+
+def get_dashboard_statistics_safe():
+    """Get dashboard statistics with error handling"""
+    try:
+        from services.dashboard_stats import get_dashboard_statistics
+        return get_dashboard_statistics()
+    except ImportError:
+        print("⚠ Dashboard stats service not available")
+        return create_default_stats()
+    except Exception as e:
+        print(f"⚠ Error loading stats: {e}")
+        return create_default_stats()
+
+def get_recent_activity_safe():
+    """Get recent activity with error handling"""
+    try:
+        from services.dashboard_stats import get_recent_activity
+        return get_recent_activity()
+    except ImportError:
+        return {"activities": [], "message": "Activity service not available"}
+    except Exception as e:
+        print(f"Error loading recent activity: {e}")
+        return {"activities": [], "error": "Unable to load recent activity"}
+
 def create_default_stats():
     """Create default statistics when services are unavailable"""
     return {
@@ -433,7 +307,7 @@ def create_default_stats():
         "message": "Using default values - stats service unavailable"
     }
 
-# Create app instance for Gunicorn/WSGI servers
+# Create app instance for deployment
 app = create_app()
 
 if __name__ == "__main__":
@@ -447,8 +321,8 @@ if __name__ == "__main__":
     print(f"Debug mode: {debug}")
     print(f"Environment: {os.environ.get('FLASK_ENV', 'production')}")
     print(f"Python version: {sys.version.split()[0]}")
-    print("🤖 Enhanced AI Chatbot with smart information extraction")
-    print("🔧 All routes properly registered with fallback handlers")
+    print("🤖 Enhanced AI Chatbot with fixed error handling")
+    print("🔧 All routes properly registered with comprehensive fallbacks")
     print("=" * 60)
     
     app.run(host="0.0.0.0", port=port, debug=debug)
