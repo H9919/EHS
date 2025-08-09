@@ -1,4 +1,4 @@
-# app.py - Deployment-Ready EHS Management System
+# app.py - Fixed template path for enhanced dashboard
 import os
 import sys
 import json
@@ -13,7 +13,7 @@ def ensure_dirs():
         "data/tmp", 
         "data/pdf",
         "static/qr",
-        "static/uploads"
+        "static/uploads"  # Add uploads directory for chatbot file uploads
     ]
     for directory in directories:
         os.makedirs(directory, exist_ok=True)
@@ -84,17 +84,25 @@ def create_app():
 
     @app.route("/")
     def index():
+        """Main chat interface - enhanced dashboard"""
         try:
             from services.dashboard_stats import get_dashboard_statistics
             stats = get_dashboard_statistics()
         except:
             stats = {}
+        # Use the enhanced dashboard template for the main route
         return render_template("enhanced_dashboard.html", stats=stats)
 
     @app.route("/dashboard")
     def dashboard():
-        """Dashboard alias"""
-        return index()
+        """Traditional dashboard view"""
+        try:
+            from services.dashboard_stats import get_dashboard_statistics
+            stats = get_dashboard_statistics()
+        except:
+            stats = {}
+        # Use the traditional dashboard for /dashboard route
+        return render_template("dashboard.html", stats=stats)
     
     # API Endpoints with error handling
     @app.route("/api/stats")
@@ -173,12 +181,13 @@ def create_app():
             "storage": {
                 "data_directory": os.path.exists("data"),
                 "sds_directory": os.path.exists("data/sds"),
-                "static_directory": os.path.exists("static")
+                "static_directory": os.path.exists("static"),
+                "uploads_directory": os.path.exists("static/uploads")
             }
         }
         
         # Determine overall health
-        critical_modules = ["incidents", "sds"]
+        critical_modules = ["incidents", "sds", "chatbot"]
         all_critical_modules_ok = all(health_status["modules"].get(module, False) for module in critical_modules)
         
         if not all_critical_modules_ok:
@@ -196,6 +205,7 @@ def create_app():
             "python_version": sys.version.split()[0],
             "features": {
                 "ai_chatbot": check_module_available("services.ehs_chatbot"),
+                "file_upload": True,
                 "sds_chat": check_module_available("services.sds_chat"),
                 "risk_matrix": check_module_available("services.risk_matrix"),
                 "pdf_generation": check_module_available("services.pdf"),
@@ -334,5 +344,6 @@ if __name__ == "__main__":
     print(f"Debug mode: {debug}")
     print(f"Environment: {os.environ.get('FLASK_ENV', 'production')}")
     print(f"Python version: {sys.version.split()[0]}")
+    print("🤖 AI Chatbot with file upload support enabled")
     
     app.run(host="0.0.0.0", port=port, debug=debug)
