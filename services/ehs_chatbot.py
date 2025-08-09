@@ -1,4 +1,4 @@
-# services/ehs_chatbot.py - Fixed memory-optimized version with better context handling
+# services/ehs_chatbot.py - Fixed version with better error handling and debugging
 import json
 import re
 import time
@@ -24,9 +24,11 @@ class LightweightIntentClassifier:
                 r'equipment.*failed', r'safety.*incident', r'person.*injured'
             ],
             'incident_type_injury': [
+                r'involves.*injury', r'involves.*workplace.*injury', r'workplace.*injury',
                 r'someone.*injured', r'someone.*hurt', r'someone.*was.*injured',
                 r'person.*injured', r'employee.*injured', r'worker.*injured',
-                r'injury.*occurred', r'medical.*incident', r'hurt.*at.*work'
+                r'injury.*occurred', r'medical.*incident', r'hurt.*at.*work',
+                r'broke.*arm', r'broke.*leg', r'fractured', r'sprained'
             ],
             'incident_type_vehicle': [
                 r'vehicle.*accident', r'car.*accident', r'truck.*accident',
@@ -34,11 +36,11 @@ class LightweightIntentClassifier:
             ],
             'incident_type_environmental': [
                 r'chemical.*spill', r'environmental.*spill', r'spill.*occurred',
-                r'leak.*happened', r'environmental.*incident'
+                r'leak.*happened', r'environmental.*incident', r'oil.*spill'
             ],
             'incident_type_property': [
                 r'property.*damage', r'equipment.*damage', r'damage.*occurred',
-                r'broken.*equipment', r'property.*damaged'
+                r'broken.*equipment', r'property.*damaged', r'car.*damage'
             ],
             'incident_type_near_miss': [
                 r'near.*miss', r'almost.*accident', r'could.*have.*been',
@@ -153,6 +155,8 @@ class LightweightEHSChatbot:
             user_id = user_id or "default_user"
             
             print(f"DEBUG: Processing message: '{user_message}', mode: {self.current_mode}")
+            print(f"DEBUG: Current context: {self.current_context}")
+            print(f"DEBUG: Slot state: {self.slot_filling_state}")
             
             # Handle file uploads
             uploaded_file = context.get("uploaded_file")
@@ -241,6 +245,7 @@ class LightweightEHSChatbot:
         """Enhanced incident processing with better debugging"""
         try:
             print(f"DEBUG: Processing incident mode, context: {self.current_context}")
+            print(f"DEBUG: Slot filling state: {self.slot_filling_state}")
             
             # Check if we already have an incident type
             if 'incident_type' not in self.current_context:
@@ -259,6 +264,8 @@ class LightweightEHSChatbot:
             
         except Exception as e:
             print(f"ERROR: process_incident_mode failed: {e}")
+            import traceback
+            traceback.print_exc()
             return self.ask_incident_type()
     
     def detect_incident_type(self, message: str) -> Optional[str]:
@@ -268,25 +275,27 @@ class LightweightEHSChatbot:
         # More comprehensive keyword matching
         type_keywords = {
             'injury': [
-                'injur', 'hurt', 'cut', 'burn', 'medical', 'hospital', 'first aid',
-                'someone.*injured', 'person.*hurt', 'employee.*hurt', 'worker.*injured',
-                'broken.*bone', 'sprain', 'strain', 'wound', 'bleeding'
+                r'injur', r'hurt', r'cut', r'burn', r'medical', r'hospital', r'first aid',
+                r'someone.*injured', r'person.*hurt', r'employee.*hurt', r'worker.*injured',
+                r'broken.*bone', r'sprain', r'strain', r'wound', r'bleeding', r'broke.*arm',
+                r'broke.*leg', r'fractured', r'bruise'
             ],
             'vehicle': [
-                'vehicle', 'car', 'truck', 'collision', 'crash', 'accident.*vehicle',
-                'hit.*by', 'ran.*into', 'fender.*bender', 'auto.*accident'
+                r'vehicle', r'car', r'truck', r'collision', r'crash', r'accident.*vehicle',
+                r'hit.*by', r'ran.*into', r'fender.*bender', r'auto.*accident'
             ],
             'environmental': [
-                'spill', 'chemical', 'leak', 'environmental', 'release',
-                'contamination', 'waste', 'hazardous.*material'
+                r'spill', r'chemical', r'leak', r'environmental', r'release',
+                r'contamination', r'waste', r'hazardous.*material', r'oil.*spill'
             ],
             'near_miss': [
-                'near.*miss', 'almost', 'could.*have', 'close.*call',
-                'nearly.*happened', 'just.*missed'
+                r'near.*miss', r'almost', r'could.*have', r'close.*call',
+                r'nearly.*happened', r'just.*missed'
             ],
             'property': [
-                'damage', 'broken', 'property', 'equipment.*damage',
-                'machinery.*broke', 'building.*damage'
+                r'damage', r'broken', r'property', r'equipment.*damage',
+                r'machinery.*broke', r'building.*damage', r'car.*costing',
+                r'costing.*\d+.*dollars', r'expensive.*damage'
             ]
         }
         
@@ -310,7 +319,8 @@ class LightweightEHSChatbot:
                     'slots': slots,
                     'current_slot': first_slot,
                     'filled': 0,
-                    'incident_type': incident_type
+                    'incident_type': incident_type,
+                    'collected_data': {}
                 }
                 
                 question = self.slot_policy.questions.get(first_slot, f"Please provide {first_slot}:")
@@ -327,6 +337,8 @@ class LightweightEHSChatbot:
             
         except Exception as e:
             print(f"ERROR: start_slot_filling failed: {e}")
+            import traceback
+            traceback.print_exc()
             return self.ask_incident_type()
     
     def continue_slot_filling(self, message: str) -> Dict:
@@ -339,14 +351,17 @@ class LightweightEHSChatbot:
             current_slot = self.slot_filling_state.get('current_slot')
             slots = self.slot_filling_state.get('slots', [])
             filled = self.slot_filling_state.get('filled', 0)
+            collected_data = self.slot_filling_state.get('collected_data', {})
             
             print(f"DEBUG: Continue slot filling - slot: {current_slot}, filled: {filled}/{len(slots)}")
             
             # Store answer
             if current_slot and message.strip():
-                self.current_context[current_slot] = message
+                collected_data[current_slot] = message
+                self.current_context[current_slot] = message  # Also store in main context
                 filled += 1
                 self.slot_filling_state['filled'] = filled
+                self.slot_filling_state['collected_data'] = collected_data
                 print(f"DEBUG: Stored answer for {current_slot}: {message[:50]}...")
             
             # Check if more slots needed
@@ -369,6 +384,8 @@ class LightweightEHSChatbot:
             
         except Exception as e:
             print(f"ERROR: continue_slot_filling failed: {e}")
+            import traceback
+            traceback.print_exc()
             return self.complete_incident_report()
     
     def complete_incident_report(self) -> Dict:
@@ -388,6 +405,7 @@ class LightweightEHSChatbot:
             
             # Reset state
             self.current_mode = 'general'
+            old_context = dict(self.current_context)  # Keep for debugging
             self.current_context = {}
             self.slot_filling_state = {}
             
@@ -412,11 +430,14 @@ class LightweightEHSChatbot:
                         "action": "navigate",
                         "url": f"/capa/new?source=incident&source_id={incident_id}"
                     }
-                ]
+                ],
+                "debug_context": old_context  # For debugging
             }
             
         except Exception as e:
             print(f"ERROR: complete_incident_report failed: {e}")
+            import traceback
+            traceback.print_exc()
             return {
                 "message": "There was an issue completing your incident report. Please try using the incident form directly.",
                 "type": "error",
