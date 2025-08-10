@@ -897,3 +897,23 @@ SlotFillingPolicy = SmartSlotPolicy: "continue_conversation", "message": "I want
             "actions": [
                 {"text": "🚨 Report Incident", "action": "continue_conversation", "message": "I need to report a workplace incident"},
                 {"text": "🛡️ Safety Concern", "action
+                 # Add this to the END of services/ehs_chatbot.py to fix test imports
+
+# Legacy class aliases for backwards compatibility (fixes test imports)
+# These aliases ensure that existing tests continue to work
+EHSChatbot = SmartEHSChatbot
+IntentClassifier = SmartIntentClassifier  
+SlotFillingPolicy = SmartSlotPolicy
+
+# Additional exports for module compatibility
+__all__ = [
+    'SmartEHSChatbot',
+    'SmartIntentClassifier', 
+    'SmartSlotPolicy',
+    'EHSChatbot',           # Legacy alias
+    'IntentClassifier',     # Legacy alias
+    'SlotFillingPolicy',    # Legacy alias
+    'create_chatbot',
+    'ENABLE_SBERT',
+    'SBERT_AVAILABLE'
+]
