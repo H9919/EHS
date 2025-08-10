@@ -1,15 +1,39 @@
-# Enhanced EHS System with AI Chatbot and Full Module Support
+# services/risk_matrix.py - FIXED VERSION with pure logic only
+"""
+Enhanced risk assessment matrix and calculations for the EHS system.
+This module contains only the core risk calculation logic and scales.
+All Flask routes and chatbot code has been moved to appropriate modules.
+"""
 
-# New file: services/risk_matrix.py
+# Enhanced likelihood scale with more detailed descriptions
 LIKELIHOOD_SCALE = {
-    0: {"label": "Impossible", "description": "The event cannot happen under current design or controls"},
-    2: {"label": "Rare", "description": "Extremely unlikely but theoretically possible (once in 10+ years)"},
-    4: {"label": "Unlikely", "description": "Could happen in exceptional cases (once every 5–10 years)"},
-    6: {"label": "Possible", "description": "Might occur occasionally under abnormal conditions (once every 1–5 years)"},
-    8: {"label": "Likely", "description": "Occurs regularly or has been documented (multiple times per year)"},
-    10: {"label": "Almost Certain", "description": "Expected to happen frequently (monthly or more)"}
+    0: {
+        "label": "Impossible", 
+        "description": "The event cannot happen under current design or controls"
+    },
+    2: {
+        "label": "Rare", 
+        "description": "Extremely unlikely but theoretically possible (once in 10+ years)"
+    },
+    4: {
+        "label": "Unlikely", 
+        "description": "Could happen in exceptional cases (once every 5–10 years)"
+    },
+    6: {
+        "label": "Possible", 
+        "description": "Might occur occasionally under abnormal conditions (once every 1–5 years)"
+    },
+    8: {
+        "label": "Likely", 
+        "description": "Occurs regularly or has been documented (multiple times per year)"
+    },
+    10: {
+        "label": "Almost Certain", 
+        "description": "Expected to happen frequently (monthly or more)"
+    }
 }
 
+# Enhanced severity scale by category
 SEVERITY_SCALE = {
     "people": {
         0: "No injury or risk of harm",
@@ -53,13 +77,36 @@ SEVERITY_SCALE = {
     }
 }
 
-def calculate_risk_score(likelihood, severity_scores):
-    """Calculate overall risk score using the ERC methodology"""
-    max_severity = max(severity_scores.values()) if severity_scores else 0
-    return likelihood * max_severity
+def calculate_risk_score(likelihood_score, severity_scores):
+    """
+    Calculate overall risk score using the enhanced ERC methodology.
+    
+    Args:
+        likelihood_score (int): Likelihood score from 0-10
+        severity_scores (dict): Dictionary of severity scores by category
+        
+    Returns:
+        float: Overall risk score from 0-100
+    """
+    if not severity_scores:
+        return 0.0
+        
+    # Use the maximum severity across all categories
+    max_severity = max(severity_scores.values())
+    
+    # Risk Score = Likelihood × Maximum Severity
+    return likelihood_score * max_severity
 
 def get_risk_level(risk_score):
-    """Determine risk level based on score"""
+    """
+    Determine risk level based on calculated risk score.
+    
+    Args:
+        risk_score (float): Risk score from 0-100
+        
+    Returns:
+        str: Risk level classification
+    """
     if risk_score >= 80:
         return "Critical"
     elif risk_score >= 60:
@@ -71,411 +118,241 @@ def get_risk_level(risk_score):
     else:
         return "Very Low"
 
-# New file: services/ehs_chatbot.py
-import json
-import re
-from datetime import datetime
-from typing import Dict, List, Optional, Tuple
-
-class EHSChatbot:
-    def __init__(self):
-        self.conversation_history = []
-        self.current_context = {}
-        
-    def process_message(self, user_message: str, user_id: str = None) -> Dict:
-        """Process user message and return appropriate response"""
-        message = user_message.lower().strip()
-        
-        # Detect intent
-        intent = self.detect_intent(message)
-        
-        # Generate response based on intent
-        response = self.generate_response(intent, user_message, user_id)
-        
-        # Update conversation history
-        self.conversation_history.append({
-            "user_message": user_message,
-            "bot_response": response,
-            "intent": intent,
-            "timestamp": datetime.now().isoformat()
-        })
-        
-        return response
+def get_risk_color(risk_level):
+    """
+    Get color code for risk level visualization.
     
-    def detect_intent(self, message: str) -> str:
-        """Detect user intent from message"""
-        # Incident reporting keywords
-        incident_keywords = ["incident", "accident", "injury", "spill", "collision", "damage", "report incident"]
+    Args:
+        risk_level (str): Risk level from get_risk_level()
         
-        # Safety concern keywords  
-        concern_keywords = ["concern", "unsafe", "hazard", "near miss", "observation", "worry"]
-        
-        # Risk assessment keywords
-        risk_keywords = ["risk", "assess", "likelihood", "severity", "evaluate risk"]
-        
-        # CAPA keywords
-        capa_keywords = ["corrective action", "capa", "follow up", "fix", "prevent"]
-        
-        # SDS keywords
-        sds_keywords = ["sds", "safety data sheet", "chemical", "material", "msds"]
-        
-        # Audit keywords
-        audit_keywords = ["audit", "inspection", "checklist", "compliance"]
-        
-        # General help/navigation
-        help_keywords = ["help", "how", "what", "guide", "assistance"]
-        
-        if any(keyword in message for keyword in incident_keywords):
-            return "incident_reporting"
-        elif any(keyword in message for keyword in concern_keywords):
-            return "safety_concern"
-        elif any(keyword in message for keyword in risk_keywords):
-            return "risk_assessment"
-        elif any(keyword in message for keyword in capa_keywords):
-            return "capa_management"
-        elif any(keyword in message for keyword in sds_keywords):
-            return "sds_lookup"
-        elif any(keyword in message for keyword in audit_keywords):
-            return "audit_inspection"
-        elif any(keyword in message for keyword in help_keywords):
-            return "general_help"
-        else:
-            return "general_inquiry"
-    
-    def generate_response(self, intent: str, original_message: str, user_id: str = None) -> Dict:
-        """Generate contextual response based on intent"""
-        
-        if intent == "incident_reporting":
-            return {
-                "message": "I'll help you report an incident. Let me guide you through the process.",
-                "type": "guided_form",
-                "actions": [
-                    {
-                        "text": "Start Incident Report",
-                        "action": "navigate",
-                        "url": "/incidents/new",
-                        "style": "primary"
-                    },
-                    {
-                        "text": "View My Reports", 
-                        "action": "navigate",
-                        "url": "/incidents",
-                        "style": "secondary"
-                    }
-                ],
-                "quick_replies": [
-                    "What types of incidents can I report?",
-                    "Is this reportable to authorities?",
-                    "Can I report anonymously?"
-                ],
-                "guidance": "You can report injuries, environmental spills, security events, vehicle collisions, property damage, and near misses. All reports are confidential and help improve our safety."
-            }
-            
-        elif intent == "safety_concern":
-            return {
-                "message": "Thank you for speaking up about a safety concern. Every observation helps keep everyone safe.",
-                "type": "guided_form", 
-                "actions": [
-                    {
-                        "text": "Report Safety Concern",
-                        "action": "navigate", 
-                        "url": "/safety-concerns/new",
-                        "style": "primary"
-                    },
-                    {
-                        "text": "Emergency Contacts",
-                        "action": "show_emergency_info",
-                        "style": "danger"
-                    }
-                ],
-                "quick_replies": [
-                    "Is this an emergency?",
-                    "What happens after I report?",
-                    "How is my privacy protected?"
-                ],
-                "guidance": "If this is an immediate danger, contact security or call 911. For non-emergency concerns, I'll help you create a safety observation report."
-            }
-            
-        elif intent == "risk_assessment":
-            return {
-                "message": "I'll help you assess risk using our Event Risk Classification (ERC) matrix. This considers likelihood and severity across 5 categories.",
-                "type": "risk_tool",
-                "actions": [
-                    {
-                        "text": "Start Risk Assessment",
-                        "action": "navigate",
-                        "url": "/risk/assess",
-                        "style": "primary"
-                    },
-                    {
-                        "text": "View Risk Register",
-                        "action": "navigate", 
-                        "url": "/risk/register",
-                        "style": "secondary"
-                    }
-                ],
-                "guidance": "Our ERC evaluates likelihood (0-10) and severity across People, Environment, Cost, Reputation, and Legal categories.",
-                "risk_info": {
-                    "likelihood_scale": LIKELIHOOD_SCALE,
-                    "severity_categories": list(SEVERITY_SCALE.keys())
-                }
-            }
-            
-        elif intent == "capa_management":
-            return {
-                "message": "I'll help you with Corrective and Preventive Actions (CAPA). These ensure we learn from incidents and prevent recurrence.",
-                "type": "capa_tool",
-                "actions": [
-                    {
-                        "text": "Create CAPA",
-                        "action": "navigate",
-                        "url": "/capa/new", 
-                        "style": "primary"
-                    },
-                    {
-                        "text": "My CAPAs",
-                        "action": "navigate",
-                        "url": "/capa/assigned",
-                        "style": "secondary"
-                    },
-                    {
-                        "text": "CAPA Dashboard",
-                        "action": "navigate",
-                        "url": "/capa/dashboard",
-                        "style": "info"
-                    }
-                ],
-                "quick_replies": [
-                    "What's the difference between corrective and preventive?",
-                    "How do I track CAPA progress?",
-                    "What are SLA requirements?"
-                ]
-            }
-            
-        elif intent == "sds_lookup":
-            return {
-                "message": "I can help you find Safety Data Sheets for chemicals and materials at your site.",
-                "type": "sds_tool",
-                "actions": [
-                    {
-                        "text": "Search SDS Library",
-                        "action": "navigate",
-                        "url": "/sds",
-                        "style": "primary"
-                    },
-                    {
-                        "text": "Upload New SDS",
-                        "action": "navigate", 
-                        "url": "/sds/upload",
-                        "style": "secondary"
-                    },
-                    {
-                        "text": "Chat with SDS",
-                        "action": "navigate",
-                        "url": "/sds",
-                        "style": "info",
-                        "note": "Ask questions about specific SDS content"
-                    }
-                ],
-                "guidance": "Search by chemical name, product name, or manufacturer. You can also scan QR codes on containers to access SDS quickly."
-            }
-            
-        elif intent == "audit_inspection":
-            return {
-                "message": "I'll help you with audits and inspections to ensure compliance and identify improvement opportunities.",
-                "type": "audit_tool",
-                "actions": [
-                    {
-                        "text": "Start Inspection",
-                        "action": "navigate",
-                        "url": "/audits/new",
-                        "style": "primary"
-                    },
-                    {
-                        "text": "Scheduled Audits",
-                        "action": "navigate",
-                        "url": "/audits/schedule", 
-                        "style": "secondary"
-                    },
-                    {
-                        "text": "Audit History",
-                        "action": "navigate",
-                        "url": "/audits/history",
-                        "style": "info"
-                    }
-                ],
-                "quick_replies": [
-                    "What types of inspections are required?",
-                    "How often should I audit my area?",
-                    "What happens if I find non-compliance?"
-                ]
-            }
-            
-        elif intent == "general_help":
-            return {
-                "message": "I'm your Smart EHS assistant! I can help you with:",
-                "type": "menu",
-                "menu_items": [
-                    "🚨 Report Incidents & Safety Concerns",
-                    "📊 Risk Assessment & Management", 
-                    "✅ Corrective Actions (CAPA)",
-                    "📋 Safety Data Sheets (SDS)",
-                    "🔍 Audits & Inspections",
-                    "📈 Dashboards & Analytics",
-                    "📚 Document Management",
-                    "👥 Contractor Management"
-                ],
-                "quick_replies": [
-                    "Show me the dashboard",
-                    "What's my role in the system?",
-                    "Emergency contacts"
-                ]
-            }
-            
-        else:
-            return {
-                "message": "I understand you're asking about our EHS system. Could you be more specific about what you need help with?",
-                "type": "clarification",
-                "quick_replies": [
-                    "Report an incident",
-                    "Safety concern", 
-                    "Find SDS",
-                    "Risk assessment",
-                    "Show main menu"
-                ]
-            }
+    Returns:
+        str: Bootstrap color class
+    """
+    color_map = {
+        "Critical": "danger",
+        "High": "warning",
+        "Medium": "info", 
+        "Low": "success",
+        "Very Low": "light"
+    }
+    return color_map.get(risk_level, "secondary")
 
-# New file: routes/chatbot.py
-from flask import Blueprint, request, jsonify, render_template
-from services.ehs_chatbot import EHSChatbot
-
-chatbot_bp = Blueprint("chatbot", __name__)
-chatbot = EHSChatbot()
-
-@chatbot_bp.route("/chat", methods=["GET", "POST"])
-def chat_interface():
-    if request.method == "GET":
-        return render_template("chatbot.html")
+def get_recommended_actions(risk_level):
+    """
+    Get recommended actions based on risk level.
     
-    data = request.get_json()
-    user_message = data.get("message", "")
-    user_id = data.get("user_id")
-    
-    response = chatbot.process_message(user_message, user_id)
-    
-    return jsonify(response)
-
-@chatbot_bp.route("/chat/history")
-def chat_history():
-    return jsonify(chatbot.conversation_history[-20:])  # Last 20 messages
-
-# New file: services/capa_manager.py
-import json
-import time
-from pathlib import Path
-from typing import Dict, List, Optional
-from datetime import datetime, timedelta
-
-class CAPAManager:
-    def __init__(self):
-        self.data_dir = Path("data")
-        self.capa_file = self.data_dir / "capa.json"
+    Args:
+        risk_level (str): Risk level classification
         
-    def load_capas(self) -> Dict:
-        if self.capa_file.exists():
-            return json.loads(self.capa_file.read_text())
-        return {}
+    Returns:
+        list: List of recommended action strings
+    """
+    action_map = {
+        "Critical": [
+            "Immediate management notification required",
+            "Stop work until controls implemented",
+            "Emergency response may be required",
+            "Senior leadership involvement necessary"
+        ],
+        "High": [
+            "Management notification within 24 hours",
+            "Implement additional controls immediately",
+            "Review and enhance existing procedures",
+            "Consider stopping affected operations"
+        ],
+        "Medium": [
+            "Management awareness required",
+            "Review existing controls",
+            "Implement improvements within reasonable timeframe",
+            "Monitor effectiveness of controls"
+        ],
+        "Low": [
+            "Document in risk register",
+            "Review controls periodically",
+            "Monitor for changes in conditions"
+        ],
+        "Very Low": [
+            "Document assessment",
+            "Periodic review as part of routine assessment"
+        ]
+    }
+    return action_map.get(risk_level, [])
+
+def validate_severity_scores(severity_scores):
+    """
+    Validate that severity scores are within acceptable ranges.
     
-    def save_capas(self, capas: Dict):
-        self.data_dir.mkdir(exist_ok=True)
-        self.capa_file.write_text(json.dumps(capas, indent=2))
-    
-    def create_capa(self, data: Dict) -> str:
-        capas = self.load_capas()
-        capa_id = str(int(time.time() * 1000))
+    Args:
+        severity_scores (dict): Dictionary of severity scores
         
-        capa = {
-            "id": capa_id,
-            "title": data.get("title", ""),
-            "description": data.get("description", ""),
-            "type": data.get("type", "corrective"),  # corrective, preventive
-            "source": data.get("source", "manual"),  # manual, incident, audit, risk
-            "source_id": data.get("source_id"),
-            "assignee": data.get("assignee", ""),
-            "due_date": data.get("due_date", ""),
-            "priority": data.get("priority", "medium"),  # low, medium, high, critical
-            "status": "open",
-            "created_date": datetime.now().isoformat(),
-            "created_by": data.get("created_by", ""),
-            "updates": [],
-            "risk_level": data.get("risk_level", "medium")
+    Returns:
+        tuple: (is_valid, error_messages)
+    """
+    errors = []
+    
+    if not isinstance(severity_scores, dict):
+        return False, ["Severity scores must be a dictionary"]
+    
+    valid_categories = set(SEVERITY_SCALE.keys())
+    for category, score in severity_scores.items():
+        if category not in valid_categories:
+            errors.append(f"Invalid category: {category}")
+            continue
+            
+        if not isinstance(score, (int, float)):
+            errors.append(f"Score for {category} must be numeric")
+            continue
+            
+        if not (0 <= score <= 10):
+            errors.append(f"Score for {category} must be between 0 and 10")
+    
+    return len(errors) == 0, errors
+
+def validate_likelihood_score(likelihood_score):
+    """
+    Validate likelihood score.
+    
+    Args:
+        likelihood_score: Likelihood score to validate
+        
+    Returns:
+        tuple: (is_valid, error_message)
+    """
+    if not isinstance(likelihood_score, (int, float)):
+        return False, "Likelihood score must be numeric"
+    
+    if not (0 <= likelihood_score <= 10):
+        return False, "Likelihood score must be between 0 and 10"
+    
+    return True, None
+
+def get_severity_description(category, score):
+    """
+    Get description for a specific severity score.
+    
+    Args:
+        category (str): Severity category
+        score (int): Severity score
+        
+    Returns:
+        str: Description of the severity level
+    """
+    if category not in SEVERITY_SCALE:
+        return "Unknown category"
+    
+    category_scale = SEVERITY_SCALE[category]
+    
+    # Find the closest score in the scale
+    available_scores = sorted(category_scale.keys())
+    closest_score = min(available_scores, key=lambda x: abs(x - score))
+    
+    return category_scale[closest_score]
+
+def get_likelihood_description(score):
+    """
+    Get description for a likelihood score.
+    
+    Args:
+        score (int): Likelihood score
+        
+    Returns:
+        str: Description of the likelihood level
+    """
+    available_scores = sorted(LIKELIHOOD_SCALE.keys())
+    closest_score = min(available_scores, key=lambda x: abs(x - score))
+    
+    return LIKELIHOOD_SCALE[closest_score]["description"]
+
+def calculate_detailed_risk_assessment(likelihood_score, severity_scores):
+    """
+    Calculate a comprehensive risk assessment with detailed breakdown.
+    
+    Args:
+        likelihood_score (int): Likelihood score 0-10
+        severity_scores (dict): Dictionary of severity scores by category
+        
+    Returns:
+        dict: Detailed risk assessment results
+    """
+    # Validate inputs
+    likelihood_valid, likelihood_error = validate_likelihood_score(likelihood_score)
+    severity_valid, severity_errors = validate_severity_scores(severity_scores)
+    
+    if not likelihood_valid or not severity_valid:
+        return {
+            "valid": False,
+            "errors": [likelihood_error] if likelihood_error else [] + severity_errors
+        }
+    
+    # Calculate risk score
+    risk_score = calculate_risk_score(likelihood_score, severity_scores)
+    risk_level = get_risk_level(risk_score)
+    
+    # Build detailed assessment
+    assessment = {
+        "valid": True,
+        "likelihood": {
+            "score": likelihood_score,
+            "description": get_likelihood_description(likelihood_score)
+        },
+        "severity_breakdown": {},
+        "risk_score": risk_score,
+        "risk_level": risk_level,
+        "risk_color": get_risk_color(risk_level),
+        "recommended_actions": get_recommended_actions(risk_level),
+        "max_severity_category": None,
+        "max_severity_score": 0
+    }
+    
+    # Process severity scores
+    max_severity = 0
+    max_category = None
+    
+    for category, score in severity_scores.items():
+        assessment["severity_breakdown"][category] = {
+            "score": score,
+            "description": get_severity_description(category, score)
         }
         
-        capas[capa_id] = capa
-        self.save_capas(capas)
-        return capa_id
+        if score > max_severity:
+            max_severity = score
+            max_category = category
     
-    def update_capa(self, capa_id: str, update_data: Dict) -> bool:
-        capas = self.load_capas()
-        if capa_id not in capas:
-            return False
+    assessment["max_severity_category"] = max_category
+    assessment["max_severity_score"] = max_severity
+    
+    return assessment
+
+def get_risk_matrix_grid():
+    """
+    Generate a risk matrix grid for visualization.
+    
+    Returns:
+        dict: Matrix data for UI rendering
+    """
+    likelihood_levels = sorted(LIKELIHOOD_SCALE.keys())
+    severity_levels = list(range(0, 11, 2))  # 0, 2, 4, 6, 8, 10
+    
+    matrix_grid = []
+    
+    for likelihood in likelihood_levels:
+        row = []
+        for severity in severity_levels:
+            risk_score = calculate_risk_score(likelihood, {"example": severity})
+            risk_level = get_risk_level(risk_score)
             
-        capa = capas[capa_id]
-        
-        # Add update to history
-        update = {
-            "timestamp": datetime.now().isoformat(),
-            "user": update_data.get("updated_by", ""),
-            "comment": update_data.get("comment", ""),
-            "status_change": update_data.get("status") != capa.get("status")
-        }
-        
-        capa["updates"].append(update)
-        
-        # Update fields
-        for key, value in update_data.items():
-            if key in ["status", "assignee", "due_date", "priority"]:
-                capa[key] = value
-                
-        capas[capa_id] = capa
-        self.save_capas(capas)
-        return True
+            cell = {
+                "likelihood": likelihood,
+                "severity": severity,
+                "risk_score": risk_score,
+                "risk_level": risk_level,
+                "color": get_risk_color(risk_level)
+            }
+            row.append(cell)
+        matrix_grid.append(row)
     
-    def get_overdue_capas(self) -> List[Dict]:
-        capas = self.load_capas()
-        overdue = []
-        today = datetime.now().date()
-        
-        for capa in capas.values():
-            if capa["status"] in ["open", "in_progress"]:
-                try:
-                    due_date = datetime.fromisoformat(capa["due_date"]).date()
-                    if due_date < today:
-                        overdue.append(capa)
-                except (ValueError, TypeError):
-                    continue
-                    
-        return overdue
-
-# Enhanced app.py to include all modules
-def create_app():
-    ensure_dirs()
-    app = Flask(__name__)
-    app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev")
-    
-    # Register all blueprints
-    app.register_blueprint(sds_bp, url_prefix="/sds")
-    app.register_blueprint(incidents_bp, url_prefix="/incidents")
-    app.register_blueprint(chatbot_bp, url_prefix="/")
-    
-    # Additional blueprints for new modules
-    # app.register_blueprint(capa_bp, url_prefix="/capa")
-    # app.register_blueprint(risk_bp, url_prefix="/risk") 
-    # app.register_blueprint(audit_bp, url_prefix="/audits")
-    # app.register_blueprint(safety_concerns_bp, url_prefix="/safety-concerns")
-
-    @app.route("/")
-    def index():
-        return render_template("dashboard.html")
-
-    return app
+    return {
+        "grid": matrix_grid,
+        "likelihood_labels": [LIKELIHOOD_SCALE[l]["label"] for l in likelihood_levels],
+        "severity_labels": [str(s) for s in severity_levels]
+    }
