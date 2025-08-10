@@ -35,7 +35,6 @@ def embed_texts(texts):
     
     if not SBERT_AVAILABLE:
         # Return zero vectors as fallback
-        print("⚠ SBERT not available - returning zero embeddings")
         return np.zeros((len(texts), 384), dtype="float32")
     
     try:
@@ -51,7 +50,6 @@ def embed_query(q: str):
     """Embed single query string"""
     if not SBERT_AVAILABLE:
         # Return zero vector as fallback
-        print("⚠ SBERT not available - returning zero embedding for query")
         return np.zeros(384, dtype="float32")
     
     try:
