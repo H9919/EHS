@@ -391,4 +391,32 @@ def ingest_single_pdf(file_stream, filename: str = "upload.pdf") -> Dict:
             "created_ts": time.time(),
             "text_len": len(text),
             "chunks": chunks,
-            "embeddings
+            "embeddings": embeddings,
+            "has_embeddings": has_embeddings,
+            "tables": tables,
+            "images": images,
+            "chemical_info": chemical_info,
+            "processing_metadata": {
+                "chunks_count": len(chunks),
+                "embeddings_generated": has_embeddings,
+                "embeddings_count": len(embeddings),
+                "tables_extracted": len(tables),
+                "images_extracted": len(images),
+                "cas_numbers_found": len(chemical_info.get('cas_numbers', [])),
+                "hazard_statements_found": len(chemical_info.get('hazard_statements', [])),
+                "processing_time": time.time(),
+                "text_extraction_successful": bool(text),
+                "filename_original": filename
+            }
+        }
+        
+        # Update index
+        index[sid] = record
+        save_index(index)
+        
+        print(f"✓ SDS ingested successfully: {sid}")
+        return record
+        
+    except Exception as e:
+        print(f"ERROR: Failed to ingest PDF {filename}: {e}")
+        raise
