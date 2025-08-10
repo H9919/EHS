@@ -1,4 +1,4 @@
-# services/sds_ingest.py - ENHANCED VERSION with proper embeddings fallbacks
+# services/sds_ingest.py - FIXED VERSION with proper JSON structure completion
 import io
 import json
 import time
@@ -380,7 +380,7 @@ def ingest_single_pdf(file_stream, filename: str = "upload.pdf") -> Dict:
         else:
             print("ℹ Embeddings not available - SDS will work without semantic search")
         
-        # Create comprehensive record
+        # Create comprehensive record - FIXED: properly structured with complete data
         sid = file_hash[:12]
         record = {
             "id": sid,
