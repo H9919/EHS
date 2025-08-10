@@ -12,24 +12,31 @@ chatbot_bp = Blueprint("chatbot", __name__)
 _chatbot_instance = None
 _chatbot_creation_attempted = False
 
+# --- replace your get_chatbot() with this ---
 def get_chatbot():
     """Get or create chatbot instance with comprehensive error handling"""
     global _chatbot_instance, _chatbot_creation_attempted
-    
-    if _chatbot_instance is None and not _chatbot_creation_attempted:
-        _chatbot_creation_attempted = True
+
+    # If we don't have a bot, always (re)attempt creation
+    if _chatbot_instance is None:
         try:
-            from services.ehs_chatbot import create_chatbot
+            from services.ehs_chatbot import create_chatbot  # preferred path
             _chatbot_instance = create_chatbot()
-            if _chatbot_instance:
-                print("✓ Smart chatbot loaded successfully")
-            else:
-                print("⚠ Smart chatbot creation returned None")
-        except Exception as e:
-            print(f"⚠ Smart chatbot loading error: {e}")
-            _chatbot_instance = None
-    
+            _chatbot_creation_attempted = True
+            print("✓ Smart chatbot loaded via factory")
+        except Exception as e1:
+            print(f"⚠ create_chatbot not available ({e1}); trying direct class...")
+            try:
+                from services.ehs_chatbot import SmartEHSChatbot
+                _chatbot_instance = SmartEHSChatbot()
+                _chatbot_creation_attempted = True
+                print("✓ Smart chatbot loaded via direct class")
+            except Exception as e2:
+                print(f"❌ Smart chatbot loading error: {e2}")
+                _chatbot_instance = None
+
     return _chatbot_instance
+
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'txt'}
 UPLOAD_FOLDER = Path("static/uploads")
