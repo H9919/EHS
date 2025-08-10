@@ -32,15 +32,13 @@ class SmartIntentClassifier:
                     'report incident', 'incident report', 'workplace incident', 'accident',
                     'injury', 'hurt', 'injured', 'damage', 'spill', 'collision', 'crash',
                     'fall', 'slip', 'trip', 'cut', 'burn', 'emergency happened',
-                    'something happened', 'someone hurt', 'property damage', 'near miss'
-                ],
+                    'something happened', 'someone hurt', 'property damage',],
                 'confidence_boost': 0.9
             },
             'safety_concern': {
-                'keywords': [
-                    'safety concern', 'unsafe condition', 'hazard', 'safety observation',
+                'keywords': ['safety concern', 'unsafe condition', 'hazard', 'safety observation',
                     'concern about safety', 'safety issue', 'dangerous', 'unsafe'
-                ],
+                , 'concerned about safety', 'unsafe work', 'workplace safety', 'near miss'],
                 'confidence_boost': 0.8
             },
             'sds_lookup': {
