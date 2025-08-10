@@ -1,4 +1,4 @@
-# services/sds_ingest.py - FIXED VERSION with optional embeddings support
+# services/sds_ingest.py - ENHANCED VERSION with proper embeddings fallbacks
 import io
 import json
 import time
@@ -10,11 +10,15 @@ import fitz  # PyMuPDF
 
 # Import embeddings with proper fallback handling
 try:
-    from .embeddings import embed_texts, is_sbert_available
+    from .embeddings import embed_texts, is_sbert_available, SBERT_AVAILABLE
     EMBEDDINGS_AVAILABLE = True
 except ImportError:
     print("⚠ Embeddings service not available - SDS will work without embeddings")
     EMBEDDINGS_AVAILABLE = False
+    SBERT_AVAILABLE = False
+    
+    def is_sbert_available():
+        return False
 
 DATA_DIR = Path("data")
 sds_dir = DATA_DIR / "sds"
@@ -71,8 +75,73 @@ def _extract_text_from_pdf(pdf_bytes: bytes) -> str:
         print(f"ERROR: Failed to extract text from PDF: {e}")
         return ""
 
+def _extract_tables_from_pdf(pdf_bytes: bytes) -> List[Dict]:
+    """Extract tables from PDF with error handling"""
+    tables = []
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        
+        for page_num, page in enumerate(doc):
+            try:
+                # Try to find tables using PyMuPDF
+                tables_on_page = page.find_tables()
+                for table in tables_on_page:
+                    table_data = {
+                        'page': page_num + 1,
+                        'bbox': table.bbox,
+                        'data': table.extract()
+                    }
+                    tables.append(table_data)
+            except Exception as e:
+                print(f"Warning: Failed to extract tables from page {page_num + 1}: {e}")
+                continue
+        
+        doc.close()
+        return tables
+        
+    except Exception as e:
+        print(f"ERROR: Failed to extract tables from PDF: {e}")
+        return []
+
+def _extract_images_from_pdf(pdf_bytes: bytes) -> List[Dict]:
+    """Extract images from PDF with metadata"""
+    images = []
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        
+        for page_num, page in enumerate(doc):
+            try:
+                image_list = page.get_images()
+                for img_index, img in enumerate(image_list):
+                    try:
+                        xref = img[0]
+                        base_image = doc.extract_image(xref)
+                        
+                        image_data = {
+                            'page': page_num + 1,
+                            'index': img_index,
+                            'ext': base_image['ext'],
+                            'width': base_image['width'],
+                            'height': base_image['height'],
+                            'size': len(base_image['image'])
+                        }
+                        images.append(image_data)
+                    except Exception as e:
+                        print(f"Warning: Failed to extract image {img_index} from page {page_num + 1}: {e}")
+                        continue
+            except Exception as e:
+                print(f"Warning: Failed to get images from page {page_num + 1}: {e}")
+                continue
+        
+        doc.close()
+        return images
+        
+    except Exception as e:
+        print(f"ERROR: Failed to extract images from PDF: {e}")
+        return []
+
 def _guess_product_name(text: str, filename: str = "") -> str:
-    """Guess product name from text content and filename"""
+    """Guess product name from text content and filename with enhanced patterns"""
     if not text:
         # Fallback to filename
         if filename:
@@ -80,15 +149,18 @@ def _guess_product_name(text: str, filename: str = "") -> str:
             return ' '.join(word.capitalize() for word in name.split())
         return "Unknown Product"
     
-    lines = text.split('\n')[:20]  # Check first 20 lines
+    lines = text.split('\n')[:30]  # Check first 30 lines
     
-    # Look for product name patterns
+    # Enhanced product name patterns
     patterns = [
-        r'product\s+name[:\s]+([^\n\r]+)',
-        r'trade\s+name[:\s]+([^\n\r]+)',
-        r'chemical\s+name[:\s]+([^\n\r]+)',
-        r'product[:\s]+([^\n\r]+)',
-        r'material[:\s]+([^\n\r]+)'
+        r'product\s+name[:\s]*([^\n\r]+)',
+        r'trade\s+name[:\s]*([^\n\r]+)',
+        r'chemical\s+name[:\s]*([^\n\r]+)', 
+        r'product[:\s]*([^\n\r]+)',
+        r'material[:\s]*([^\n\r]+)',
+        r'substance[:\s]*([^\n\r]+)',
+        r'identification[:\s]*([^\n\r]+)',
+        r'product\s+identifier[:\s]*([^\n\r]+)'
     ]
     
     for pattern in patterns:
@@ -96,27 +168,40 @@ def _guess_product_name(text: str, filename: str = "") -> str:
             match = re.search(pattern, line, re.IGNORECASE)
             if match:
                 product_name = match.group(1).strip()
-                if 3 < len(product_name) < 100:
-                    return _clean_product_name(product_name)
+                cleaned = _clean_product_name(product_name)
+                if 3 < len(cleaned) < 100 and not _is_generic_text(cleaned):
+                    return cleaned
     
-    # Look for chemical identifiers
-    cas_pattern = r'CAS[#\s]*(\d{2,7}-\d{2}-\d)'
-    for line in lines:
+    # Look for chemical identifiers and names near them
+    cas_pattern = r'CAS[#\s\-]*(\d{2,7}-\d{2}-\d)'
+    for i, line in enumerate(lines):
         cas_match = re.search(cas_pattern, line, re.IGNORECASE)
         if cas_match:
-            # Try to find chemical name near CAS number
-            for nearby_line in lines:
-                if cas_match.group(1) not in nearby_line and 5 < len(nearby_line.strip()) < 80:
-                    if not re.search(r'cas|section|page|\d+\.\d+', nearby_line, re.IGNORECASE):
-                        return _clean_product_name(nearby_line.strip())
+            # Look for chemical name in nearby lines
+            for j in range(max(0, i-2), min(len(lines), i+3)):
+                potential_name = lines[j].strip()
+                if (cas_match.group(1) not in potential_name and 
+                    5 < len(potential_name) < 80 and
+                    not _is_generic_text(potential_name)):
+                    cleaned = _clean_product_name(potential_name)
+                    if cleaned != "Unknown Product":
+                        return cleaned
     
-    # Use first meaningful line
+    # Look for meaningful lines that could be product names
     for line in lines:
         line = line.strip()
-        if 10 < len(line) < 100 and not re.search(r'safety|data|sheet|page|section|\d+', line, re.IGNORECASE):
-            return _clean_product_name(line)
+        if (10 < len(line) < 100 and 
+            not _is_generic_text(line) and
+            not re.search(r'page|section|\d+\.\d+|safety|data|sheet', line, re.IGNORECASE)):
+            cleaned = _clean_product_name(line)
+            if cleaned != "Unknown Product":
+                return cleaned
     
-    # Final fallback
+    # Final fallback to filename
+    if filename:
+        name = filename.replace('.pdf', '').replace('_', ' ').replace('-', ' ')
+        return ' '.join(word.capitalize() for word in name.split())
+    
     return "Unknown Product"
 
 def _clean_product_name(raw_name: str) -> str:
@@ -129,7 +214,7 @@ def _clean_product_name(raw_name: str) -> str:
     # Remove SDS-specific terms
     sds_terms = [
         "safety data sheet", "sds", "msds", "material safety data sheet",
-        "product data sheet", "safety datasheet"
+        "product data sheet", "safety datasheet", "product information sheet"
     ]
     
     for term in sds_terms:
@@ -139,14 +224,70 @@ def _clean_product_name(raw_name: str) -> str:
     clean_name = re.sub(r'version\s+\d+(\.\d+)*', '', clean_name, flags=re.IGNORECASE)
     clean_name = re.sub(r'rev\s+\d+', '', clean_name, flags=re.IGNORECASE)
     clean_name = re.sub(r'\d{1,2}/\d{1,2}/\d{2,4}', '', clean_name)
+    clean_name = re.sub(r'\d{4}-\d{2}-\d{2}', '', clean_name)
     
-    # Remove extra whitespace
+    # Remove common prefixes/suffixes
+    prefixes_suffixes = [
+        "section 1", "identification", "product identifier",
+        "trade name", "chemical name", "substance name"
+    ]
+    
+    for term in prefixes_suffixes:
+        clean_name = re.sub(re.escape(term), "", clean_name, flags=re.IGNORECASE)
+    
+    # Remove extra whitespace and punctuation
+    clean_name = re.sub(r'[:\-_]+', ' ', clean_name)
     clean_name = ' '.join(clean_name.split())
     
-    return clean_name.title() if clean_name else "Unknown Product"
+    # If nothing meaningful left, return default
+    if len(clean_name) < 2 or _is_generic_text(clean_name):
+        return "Unknown Product"
+    
+    return clean_name.title()
+
+def _is_generic_text(text: str) -> bool:
+    """Check if text is too generic to be a product name"""
+    generic_terms = [
+        "product", "chemical", "substance", "material", "solution",
+        "mixture", "compound", "agent", "formula", "preparation",
+        "identification", "name", "title", "header", "section"
+    ]
+    
+    text_lower = text.lower()
+    return any(term in text_lower for term in generic_terms) and len(text.split()) < 3
+
+def _extract_chemical_info(text: str) -> Dict:
+    """Extract chemical information from SDS text"""
+    info = {
+        'cas_numbers': [],
+        'hazard_statements': [],
+        'ghs_classifications': [],
+        'signal_words': [],
+        'precautionary_statements': []
+    }
+    
+    # CAS number extraction
+    cas_pattern = r'CAS[#\s\-]*(\d{2,7}-\d{2}-\d)'
+    info['cas_numbers'] = list(set(re.findall(cas_pattern, text, re.IGNORECASE)))
+    
+    # Hazard statements (H-codes)
+    h_pattern = r'H(\d{3})[:\s]*([^\n\r]+)'
+    h_matches = re.findall(h_pattern, text, re.IGNORECASE)
+    info['hazard_statements'] = [f"H{code}: {desc.strip()}" for code, desc in h_matches]
+    
+    # Signal words
+    signal_pattern = r'\b(DANGER|WARNING)\b'
+    info['signal_words'] = list(set(re.findall(signal_pattern, text, re.IGNORECASE)))
+    
+    # Precautionary statements (P-codes)
+    p_pattern = r'P(\d{3})[:\s]*([^\n\r]+)'
+    p_matches = re.findall(p_pattern, text, re.IGNORECASE)
+    info['precautionary_statements'] = [f"P{code}: {desc.strip()}" for code, desc in p_matches]
+    
+    return info
 
 def _chunk_text(text: str, size: int = 1000, overlap: int = 100) -> List[str]:
-    """Chunk text into overlapping segments"""
+    """Chunk text into overlapping segments for embeddings"""
     if not text or len(text) < size:
         return [text] if text else []
     
@@ -160,7 +301,7 @@ def _chunk_text(text: str, size: int = 1000, overlap: int = 100) -> List[str]:
         if end < len(text):
             # Look for sentence endings within last 200 chars
             search_start = max(end - 200, i)
-            for pattern in ['. ', '.\n', '?\n', '!\n']:
+            for pattern in ['. ', '.\n', '?\n', '!\n', '.\r\n']:
                 pos = text.rfind(pattern, search_start, end)
                 if pos > i:
                     end = pos + len(pattern)
@@ -195,6 +336,11 @@ def ingest_single_pdf(file_stream, filename: str = "upload.pdf") -> Dict:
         if not text:
             print(f"Warning: No text extracted from {filename}")
         
+        # Extract additional content
+        tables = _extract_tables_from_pdf(raw)
+        images = _extract_images_from_pdf(raw)
+        chemical_info = _extract_chemical_info(text)
+        
         # Guess product name
         product_name = _guess_product_name(text, filename)
         print(f"Detected product: {product_name}")
@@ -216,20 +362,25 @@ def ingest_single_pdf(file_stream, filename: str = "upload.pdf") -> Dict:
         
         # Generate embeddings if available
         embeddings = []
+        has_embeddings = False
+        
         if EMBEDDINGS_AVAILABLE and chunks:
             try:
                 if is_sbert_available():
+                    from .embeddings import embed_texts
                     embeddings = embed_texts(chunks).tolist()
-                    print(f"Generated {len(embeddings)} embeddings")
+                    has_embeddings = True
+                    print(f"✓ Generated {len(embeddings)} embeddings")
                 else:
-                    print("SBERT not available - skipping embeddings")
+                    print("ℹ SBERT not available - SDS will work without semantic search")
             except Exception as e:
-                print(f"Warning: Failed to generate embeddings: {e}")
+                print(f"⚠ Failed to generate embeddings: {e}")
                 embeddings = []
+                has_embeddings = False
         else:
-            print("Embeddings not available - SDS will work without semantic search")
+            print("ℹ Embeddings not available - SDS will work without semantic search")
         
-        # Create record
+        # Create comprehensive record
         sid = file_hash[:12]
         record = {
             "id": sid,
@@ -240,65 +391,4 @@ def ingest_single_pdf(file_stream, filename: str = "upload.pdf") -> Dict:
             "created_ts": time.time(),
             "text_len": len(text),
             "chunks": chunks,
-            "embeddings": embeddings,  # Empty list if embeddings not available
-            "has_embeddings": bool(embeddings)
-        }
-        
-        # Save to index
-        index[sid] = record
-        save_index(index)
-        
-        print(f"✓ Successfully ingested SDS: {product_name} (ID: {sid})")
-        return record
-        
-    except Exception as e:
-        print(f"ERROR: Failed to ingest PDF {filename}: {e}")
-        import traceback
-        traceback.print_exc()
-        raise
-
-def search_sds_by_name(query: str, limit: int = 10) -> List[Dict]:
-    """Search SDS by product name (basic text search)"""
-    try:
-        index = load_index()
-        if not index:
-            return []
-        
-        query_lower = query.lower()
-        results = []
-        
-        for sds_id, sds_record in index.items():
-            product_name = sds_record.get("product_name", "").lower()
-            
-            # Simple text matching
-            if query_lower in product_name:
-                results.append({
-                    "id": sds_id,
-                    "product_name": sds_record.get("product_name"),
-                    "file_name": sds_record.get("file_name"),
-                    "score": 1.0 if query_lower == product_name else 0.5
-                })
-        
-        # Sort by score
-        results.sort(key=lambda x: x["score"], reverse=True)
-        return results[:limit]
-        
-    except Exception as e:
-        print(f"ERROR: SDS search failed: {e}")
-        return []
-
-def get_sds_stats() -> Dict:
-    """Get SDS library statistics"""
-    try:
-        index = load_index()
-        total_sds = len(index)
-        with_embeddings = sum(1 for rec in index.values() if rec.get("has_embeddings", False))
-        
-        return {
-            "total_sds": total_sds,
-            "with_embeddings": with_embeddings,
-            "embeddings_enabled": EMBEDDINGS_AVAILABLE and is_sbert_available() if EMBEDDINGS_AVAILABLE else False
-        }
-    except Exception as e:
-        print(f"ERROR: Failed to get SDS stats: {e}")
-        return {"total_sds": 0, "with_embeddings": 0, "embeddings_enabled": False}
+            "embeddings
