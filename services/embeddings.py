@@ -1,4 +1,4 @@
- services/embeddings.py - FIXED VERSION with proper SBERT gating
+# services/embeddings.py - FIXED VERSION with proper SBERT gating
 import os
 import numpy as np
 from functools import lru_cache
