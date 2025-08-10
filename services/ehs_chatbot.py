@@ -1,4 +1,4 @@
-# services/ehs_chatbot.py - FIXED VERSION with all issues resolved
+# services/ehs_chatbot.py - COMPLETE FIXED VERSION
 import json
 import re
 import time
@@ -24,14 +24,14 @@ else:
 
 class SmartIntentClassifier:
     """Enhanced intent classifier with better pattern matching and context awareness"""
-    
+
     def __init__(self):
         self.intent_patterns = {
             'incident_reporting': {
                 'keywords': [
-                    'report incident', 'incident report', 'workplace incident', 'accident', 
-                    'injury', 'hurt', 'injured', 'damage', 'spill', 'collision', 'crash', 
-                    'fall', 'slip', 'trip', 'cut', 'burn', 'emergency happened', 
+                    'report incident', 'incident report', 'workplace incident', 'accident',
+                    'injury', 'hurt', 'injured', 'damage', 'spill', 'collision', 'crash',
+                    'fall', 'slip', 'trip', 'cut', 'burn', 'emergency happened',
                     'something happened', 'someone hurt', 'property damage', 'near miss'
                 ],
                 'confidence_boost': 0.9
@@ -64,47 +64,47 @@ class SmartIntentClassifier:
                 'confidence_boost': 0.6
             }
         }
-    
+
     def classify_intent(self, message: str, context: Dict = None) -> Tuple[str, float]:
         """Classify intent with context awareness"""
         if not message or not isinstance(message, str):
             return 'general_inquiry', 0.0
-            
+
         message_lower = message.lower().strip()
-        
+
         # Check for emergency keywords first
         emergency_keywords = ['emergency', '911', 'fire', 'bleeding', 'unconscious', 'heart attack']
         if any(word in message_lower for word in emergency_keywords):
             return 'emergency', 1.0
-        
+
         best_intent = 'general_inquiry'
         best_confidence = 0.0
-        
+
         for intent, config in self.intent_patterns.items():
             confidence = 0.0
-            
+
             # Check for keyword matches
             for keyword in config['keywords']:
                 if keyword in message_lower:
                     confidence = config['confidence_boost']
                     break
-            
+
             # Context-based confidence adjustment
             if context:
                 if intent == 'continue_conversation' and context.get('waiting_for_response'):
                     confidence += 0.3
                 elif intent == 'incident_reporting' and context.get('current_mode') == 'incident':
                     confidence += 0.2
-            
+
             if confidence > best_confidence:
                 best_confidence = confidence
                 best_intent = intent
-        
+
         return best_intent, best_confidence
 
 class SmartSlotPolicy:
     """Enhanced slot filling with intelligent conversation flow"""
-    
+
     def __init__(self):
         self.incident_slots = {
             'injury': {
@@ -132,7 +132,7 @@ class SmartSlotPolicy:
                 'optional': ['people_involved', 'impact_assessment']
             }
         }
-        
+
         self.slot_questions = {
             'description': "Please describe what happened in detail. Include who was involved, what occurred, when it happened, and the sequence of events:",
             'location': "Where exactly did this incident occur? (Building, room, area, or specific location)",
@@ -155,19 +155,29 @@ class SmartSlotPolicy:
 
 class SmartEHSChatbot:
     """Enhanced EHS Chatbot with intelligent conversation management"""
-    
+
     def __init__(self):
-        self.conversation_history = []
+        self.conversation_history: List[Dict[str, Any]] = []
         self.current_mode = 'general'
-        self.current_context = {}
-        self.slot_filling_state = {}
-        self.user_preferences = {}
-        
+        self.current_context: Dict[str, Any] = {}
+        self.slot_filling_state: Dict[str, Any] = {}
+        self.user_preferences: Dict[str, Any] = {}
+
         self.intent_classifier = SmartIntentClassifier()
         self.slot_policy = SmartSlotPolicy()
-        
+
+        # Optional SBERT model (if enabled and available)
+        self._sbert_model = None
+        if SBERT_AVAILABLE:
+            try:
+                self._sbert_model = SentenceTransformer(os.environ.get('SBERT_MODEL', 'all-MiniLM-L6-v2'))
+                print("✓ SBERT model loaded")
+            except Exception as e:
+                print(f"⚠ Failed to load SBERT model: {e}")
+                self._sbert_model = None
+
         print("✓ Smart EHS Chatbot initialized with enhanced conversation flow")
-    
+
     def process_message(self, user_message: str, user_id: str = None, context: Dict = None) -> Dict:
         """Process message with intelligent conversation management"""
         try:
@@ -175,29 +185,36 @@ class SmartEHSChatbot:
             user_message = str(user_message).strip() if user_message else ""
             user_id = user_id or "default_user"
             context = context or {}
-            
+
+            self.conversation_history.append({
+                "ts": datetime.utcnow().isoformat(),
+                "user_id": user_id,
+                "message": user_message,
+                "context": context
+            })
+
             print(f"DEBUG: Processing message: '{user_message[:50]}...', mode: {self.current_mode}")
-            
+
             # Handle empty messages
             if not user_message and not context.get("uploaded_file"):
                 return self._get_clarification_response()
-            
+
             # Handle file uploads
             if context.get("uploaded_file"):
                 return self._handle_file_upload_smart(context["uploaded_file"], user_message)
-            
+
             # Emergency detection (highest priority)
             if self._is_emergency(user_message):
                 return self._handle_emergency()
-            
+
             # Intent classification with context
             intent, confidence = self.intent_classifier.classify_intent(
-                user_message, 
+                user_message,
                 {**self.current_context, 'current_mode': self.current_mode}
             )
-            
+
             print(f"DEBUG: Intent: {intent}, Confidence: {confidence:.2f}")
-            
+
             # Route to appropriate handler
             if self.current_mode == 'incident' and self.slot_filling_state:
                 return self._continue_incident_reporting(user_message)
@@ -213,31 +230,34 @@ class SmartEHSChatbot:
                 return self._handle_general_inquiry_smart(user_message)
             else:
                 return self._get_smart_fallback_response(user_message, intent, confidence)
-                
+
         except Exception as e:
             print(f"ERROR: process_message failed: {e}")
             import traceback
             traceback.print_exc()
             return self._get_error_recovery_response(str(e))
-    
+
     def _start_incident_reporting_smart(self, message: str) -> Dict:
         """Start intelligent incident reporting with type detection"""
         print("DEBUG: Starting smart incident reporting")
-        
+
         # Reset for new incident
         self.current_mode = 'incident'
         self.current_context = {'initial_message': message}
-        
+
         # Detect incident type from message
         incident_type = self._detect_incident_type_smart(message)
         self.current_context['incident_type'] = incident_type
-        
+
         print(f"DEBUG: Detected incident type: {incident_type}")
-        
+
         # Get required slots for this incident type
-        slots_config = self.slot_policy.incident_slots.get(incident_type, self.slot_policy.incident_slots['other'])
-        required_slots = slots_config['required'].copy()
-        
+        slots_config = self.slot_policy.incident_slots.get(
+            incident_type,
+            self.slot_policy.incident_slots['other']
+        )
+        required_slots = list(slots_config['required'])
+
         # Initialize slot filling state
         self.slot_filling_state = {
             'required_slots': required_slots,
@@ -245,14 +265,20 @@ class SmartEHSChatbot:
             'collected_data': {},
             'incident_type': incident_type
         }
-        
+
         # Start with first required slot
         if required_slots:
             first_slot = required_slots[0]
-            question = self.slot_policy.slot_questions.get(first_slot, f"Please provide {first_slot.replace('_', ' ')}:")
-            
+            question = self.slot_policy.slot_questions.get(
+                first_slot, f"Please provide {first_slot.replace('_', ' ')}:"
+            )
+
             return {
-                "message": f"🚨 **{incident_type.replace('_', ' ').title()} Incident Report**\n\nI'll help you report this incident step by step to ensure we capture all necessary details.\n\n**Step 1 of {len(required_slots)}:** {question}",
+                "message": (
+                    f"🚨 **{incident_type.replace('_', ' ').title()} Incident Report**\n\n"
+                    "I'll help you report this incident step by step to ensure we capture all necessary details.\n\n"
+                    f"**Step 1 of {len(required_slots)}:** {question}"
+                ),
                 "type": "incident_slot_filling",
                 "slot": first_slot,
                 "progress": {
@@ -265,50 +291,59 @@ class SmartEHSChatbot:
             }
         else:
             return self._complete_incident_report()
-    
+
     def _continue_incident_reporting(self, message: str) -> Dict:
         """Continue incident reporting with smart validation"""
         if not self.slot_filling_state:
             return self._complete_incident_report()
-        
+
         required_slots = self.slot_filling_state.get('required_slots', [])
         current_index = self.slot_filling_state.get('current_slot_index', 0)
         collected_data = self.slot_filling_state.get('collected_data', {})
-        
+
         if current_index >= len(required_slots):
             return self._complete_incident_report()
-        
+
         current_slot = required_slots[current_index]
-        
+
         # Validate the response for this slot
         validation_result = self._validate_slot_response(current_slot, message)
-        
+
         if not validation_result['valid']:
             return {
-                "message": f"❌ **Please provide more details**\n\n{validation_result['message']}\n\n**Question:** {self.slot_policy.slot_questions.get(current_slot)}",
+                "message": (
+                    f"❌ **Please provide more details**\n\n{validation_result['message']}\n\n"
+                    f"**Question:** {self.slot_policy.slot_questions.get(current_slot)}"
+                ),
                 "type": "incident_slot_validation_failed",
                 "slot": current_slot,
-                "validation_error": validation_result['message']
+                "validation_error": validation_result['message'],
+                "quick_replies": self._get_slot_quick_replies(current_slot)
             }
-        
+
         # Store the validated response
         collected_data[current_slot] = message
         self.current_context[current_slot] = message
-        
+
         # Move to next slot
         current_index += 1
         self.slot_filling_state['current_slot_index'] = current_index
         self.slot_filling_state['collected_data'] = collected_data
-        
+
         # Check if we have more slots
         if current_index < len(required_slots):
             next_slot = required_slots[current_index]
-            question = self.slot_policy.slot_questions.get(next_slot, f"Please provide {next_slot.replace('_', ' ')}:")
-            
+            question = self.slot_policy.slot_questions.get(
+                next_slot, f"Please provide {next_slot.replace('_', ' ')}:"
+            )
+
             progress_percentage = int(((current_index + 1) / len(required_slots)) * 100)
-            
+
             return {
-                "message": f"✅ **Recorded:** {message[:100]}{'...' if len(message) > 100 else ''}\n\n**Step {current_index + 1} of {len(required_slots)}:** {question}",
+                "message": (
+                    f"✅ **Recorded:** {message[:100]}{'...' if len(message) > 100 else ''}\n\n"
+                    f"**Step {current_index + 1} of {len(required_slots)}:** {question}"
+                ),
                 "type": "incident_slot_filling",
                 "slot": next_slot,
                 "progress": {
@@ -320,11 +355,11 @@ class SmartEHSChatbot:
             }
         else:
             return self._complete_incident_report()
-    
+
     def _validate_slot_response(self, slot: str, response: str) -> Dict:
         """Validate slot responses to ensure quality data"""
-        response = response.strip()
-        
+        response = (response or "").strip()
+
         # Minimum length requirements
         min_lengths = {
             'description': 20,
@@ -332,35 +367,38 @@ class SmartEHSChatbot:
             'potential_consequences': 15,
             'containment': 10
         }
-        
+
         min_length = min_lengths.get(slot, 5)
         if len(response) < min_length:
             return {
                 'valid': False,
                 'message': f"Please provide more detail (at least {min_length} characters). This information is important for proper investigation."
             }
-        
+
         # Specific validations
         if slot == 'injured_person' and len(response) < 3:
             return {
                 'valid': False,
                 'message': "Please provide the injured person's name. This is required for proper documentation and follow-up."
             }
-        
+
         if slot == 'location' and len(response) < 3:
             return {
                 'valid': False,
                 'message': "Please specify the exact location where this incident occurred."
             }
-        
-        if slot == 'severity' and not any(word in response.lower() for word in ['minor', 'first aid', 'medical', 'hospital', 'serious', 'life threatening']):
+
+        if slot == 'severity' and not any(
+            word in response.lower() for word in
+            ['minor', 'first aid', 'medical', 'hospital', 'serious', 'life threatening', 'life-threatening']
+        ):
             return {
                 'valid': False,
                 'message': "Please describe the severity level (e.g., minor/first aid, medical treatment needed, hospitalization required, or life-threatening)."
             }
-        
+
         return {'valid': True, 'message': 'Valid response'}
-    
+
     def _get_slot_quick_replies(self, slot: str) -> List[str]:
         """Get contextual quick replies for different slots"""
         quick_replies = {
@@ -370,28 +408,34 @@ class SmartEHSChatbot:
             'containment': ['Fully contained', 'Partially contained', 'Not contained'],
             'estimated_cost': ['Under $1,000', '$1,000 - $10,000', 'Over $10,000', 'Unknown at this time']
         }
-        
         return quick_replies.get(slot, [])
-    
+
     def _complete_incident_report(self) -> Dict:
         """Complete incident report with enhanced data processing"""
         try:
             incident_id = f"INC-{int(time.time())}"
-            
+
             # Generate comprehensive summary
             summary = self._generate_incident_summary_smart()
-            
+
             # Save incident data
             save_success = self._save_incident_data_safe(incident_id)
-            
+
             # Reset state for next conversation
             self._reset_state()
-            
-            success_message = f"✅ **Incident Report Completed Successfully**\n\n**Incident ID:** `{incident_id}`\n\n{summary}\n\n🔔 **Next Steps:**\n• Investigation team has been notified\n• You will receive updates on the investigation progress\n• A formal report will be generated within 24 hours"
-            
+
+            success_message = (
+                f"✅ **Incident Report Completed Successfully**\n\n"
+                f"**Incident ID:** `{incident_id}`\n\n{summary}\n\n"
+                "🔔 **Next Steps:**\n"
+                "• Investigation team has been notified\n"
+                "• You will receive updates on the investigation progress\n"
+                "• A formal report will be generated within 24 hours"
+            )
+
             if not save_success:
                 success_message += "\n\n⚠️ Note: There was a technical issue saving some details, but your core report has been recorded."
-            
+
             return {
                 "message": success_message,
                 "type": "incident_completed",
@@ -403,36 +447,39 @@ class SmartEHSChatbot:
                 ],
                 "quick_replies": [
                     "Report another incident",
-                    "View all my reports", 
+                    "View all my reports",
                     "What happens next?",
                     "Main menu"
                 ]
             }
-            
+
         except Exception as e:
             print(f"ERROR: Completing incident report failed: {e}")
             self._reset_state()
-            
+
             return {
-                "message": f"✅ **Incident Report Submitted**\n\nIncident ID: `INC-{int(time.time())}`\n\n⚠️ There was a technical issue, but your basic report has been recorded and the safety team has been notified.",
+                "message": (
+                    f"✅ **Incident Report Submitted**\n\nIncident ID: `INC-{int(time.time())}`\n\n"
+                    "⚠️ There was a technical issue, but your basic report has been recorded and the safety team has been notified."
+                ),
                 "type": "incident_completed_with_error",
                 "actions": [
                     {"text": "📊 Dashboard", "action": "navigate", "url": "/dashboard"},
                     {"text": "🆕 New Incident", "action": "continue_conversation", "message": "I need to report another incident"}
                 ]
             }
-    
+
     def _generate_incident_summary_smart(self) -> str:
         """Generate intelligent incident summary"""
         incident_type = self.current_context.get('incident_type', 'Unknown')
         collected_data = self.slot_filling_state.get('collected_data', {})
-        
+
         summary_parts = [f"**Type:** {incident_type.replace('_', ' ').title()}"]
-        
+
         # Add key details based on incident type
         if 'location' in collected_data:
             summary_parts.append(f"**Location:** {collected_data['location']}")
-        
+
         if incident_type == 'injury':
             if 'injured_person' in collected_data:
                 summary_parts.append(f"**Injured Person:** {collected_data['injured_person']}")
@@ -440,25 +487,31 @@ class SmartEHSChatbot:
                 summary_parts.append(f"**Injury:** {collected_data['injury_type']}")
             if 'severity' in collected_data:
                 summary_parts.append(f"**Severity:** {collected_data['severity']}")
-        
+
         elif incident_type == 'environmental':
             if 'substance_involved' in collected_data:
                 summary_parts.append(f"**Substance:** {collected_data['substance_involved']}")
             if 'containment' in collected_data:
                 summary_parts.append(f"**Containment:** {collected_data['containment']}")
-        
+
         elif incident_type == 'property':
             if 'damage_description' in collected_data:
-                summary_parts.append(f"**Damage:** {collected_data['damage_description'][:50]}...")
+                dd = collected_data['damage_description']
+                summary_parts.append(f"**Damage:** {dd[:50]}{'...' if len(dd) > 50 else ''}")
             if 'estimated_cost' in collected_data:
                 summary_parts.append(f"**Estimated Cost:** {collected_data['estimated_cost']}")
-        
+
+        # Always include description last if present
+        if 'description' in collected_data:
+            desc = collected_data['description']
+            summary_parts.append(f"**Description:** {desc[:140]}{'...' if len(desc) > 140 else ''}")
+
         return "\n".join(summary_parts)
-    
+
     def _detect_incident_type_smart(self, message: str) -> str:
         """Smart incident type detection with confidence scoring"""
         message_lower = message.lower()
-        
+
         type_indicators = {
             'injury': {
                 'keywords': ['injury', 'injured', 'hurt', 'medical', 'hospital', 'pain', 'wound', 'cut', 'burn', 'fracture', 'sprain'],
@@ -481,7 +534,7 @@ class SmartEHSChatbot:
                 'weight': 2
             }
         }
-        
+
         scores = {}
         for incident_type, config in type_indicators.items():
             score = 0
@@ -489,13 +542,13 @@ class SmartEHSChatbot:
                 if keyword in message_lower:
                     score += config['weight']
             scores[incident_type] = score
-        
+
         # Return type with highest score, or 'other' if no clear match
         if max(scores.values()) > 0:
             return max(scores, key=scores.get)
         else:
             return 'other'
-    
+
     def _handle_safety_concern_smart(self, message: str) -> Dict:
         """Handle safety concern with smart guidance"""
         return {
@@ -513,17 +566,17 @@ class SmartEHSChatbot:
                 "Is this urgent?"
             ]
         }
-    
+
     def _handle_sds_request_smart(self, message: str) -> Dict:
         """Handle SDS request with intelligent search suggestions"""
         # Try to extract chemical name from message
         chemical_name = self._extract_chemical_name(message)
-        
+
         base_message = "📄 **I'll help you find Safety Data Sheets**\n\nOur SDS library is searchable and contains safety information for workplace chemicals."
-        
+
         if chemical_name:
             base_message += f"\n\n💡 I noticed you mentioned **{chemical_name}** - I can help you find that specific SDS."
-        
+
         return {
             "message": base_message,
             "type": "sds_assistance",
@@ -538,61 +591,58 @@ class SmartEHSChatbot:
                 "How to use QR codes"
             ]
         }
-    
-    def _extract_chemical_name(self, message: str) -> str:
+
+    def _extract_chemical_name(self, message: str) -> Optional[str]:
         """Extract chemical name from user message"""
-        # Common chemical patterns
         chemical_patterns = [
             r'(?:sds for|looking for|find|need)\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)',
             r'([a-zA-Z]+(?:\s+[a-zA-Z]+)?)\s+(?:sds|safety data sheet)',
             r'chemical\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)'
         ]
-        
+
+        lowered = (message or "").lower()
         for pattern in chemical_patterns:
-            match = re.search(pattern, message.lower())
+            match = re.search(pattern, lowered)
             if match:
                 chemical = match.group(1).strip()
                 if len(chemical) > 2 and chemical not in ['the', 'and', 'for', 'with']:
                     return chemical.title()
-        
+
         return None
-    
+
     def _handle_continue_conversation(self, message: str) -> Dict:
         """Handle conversation continuation requests"""
-        if 'incident' in message.lower():
+        lowered = (message or "").lower()
+        if 'incident' in lowered:
             return self._start_incident_reporting_smart("I need to report an incident")
-        elif 'safety' in message.lower():
+        elif 'safety' in lowered:
             return self._handle_safety_concern_smart(message)
-        elif 'sds' in message.lower():
+        elif 'sds' in lowered or 'data sheet' in lowered:
             return self._handle_sds_request_smart(message)
         else:
             return self._get_general_help_response()
-    
+
     def _handle_general_inquiry_smart(self, message: str) -> Dict:
         """Handle general inquiries with context awareness"""
-        if any(word in message.lower() for word in ['what', 'how', 'help', 'guide']):
+        if any(word in (message or "").lower() for word in ['what', 'how', 'help', 'guide', 'menu']):
             return self._get_general_help_response()
         else:
             return self._get_smart_fallback_response(message, 'general_inquiry', 0.3)
-    
+
     def _get_smart_fallback_response(self, message: str, intent: str, confidence: float) -> Dict:
         """Generate contextually appropriate fallback responses"""
-        
         suggestions = []
-        
-        # Analyze message for keywords to provide better suggestions
-        message_lower = message.lower()
-        
+        message_lower = (message or "").lower()
+
         if any(word in message_lower for word in ['report', 'incident', 'accident']):
             suggestions.append({"text": "🚨 Report Incident", "action": "continue_conversation", "message": "I need to report a workplace incident"})
-        
+
         if any(word in message_lower for word in ['safety', 'concern', 'unsafe']):
             suggestions.append({"text": "🛡️ Safety Concern", "action": "continue_conversation", "message": "I want to report a safety concern"})
-        
+
         if any(word in message_lower for word in ['chemical', 'sds', 'data sheet']):
             suggestions.append({"text": "📋 Find SDS", "action": "continue_conversation", "message": "I need to find a safety data sheet"})
-        
-        # Default suggestions if no specific keywords found
+
         if not suggestions:
             suggestions = [
                 {"text": "🚨 Report Incident", "action": "continue_conversation", "message": "I need to report a workplace incident"},
@@ -600,7 +650,7 @@ class SmartEHSChatbot:
                 {"text": "📋 Find SDS", "action": "continue_conversation", "message": "I need to find a safety data sheet"},
                 {"text": "📊 Dashboard", "action": "navigate", "url": "/dashboard"}
             ]
-        
+
         return {
             "message": f"🤖 **I want to help you with that!**\n\nI understand you said: *\"{message}\"*\n\nI'm here to help with EHS matters. Here are some things I can assist with:",
             "type": "smart_assistance",
@@ -612,7 +662,7 @@ class SmartEHSChatbot:
                 "System guide"
             ]
         }
-    
+
     def _get_clarification_response(self) -> Dict:
         """Get clarification when message is empty"""
         return {
@@ -626,22 +676,181 @@ class SmartEHSChatbot:
             ],
             "quick_replies": [
                 "Report an incident",
-                "Safety concern", 
+                "Safety concern",
                 "Find SDS",
                 "Emergency contacts",
                 "Show all features"
             ]
         }
-    
+
     def _handle_file_upload_smart(self, file_info: Dict, message: str) -> Dict:
         """Handle file uploads with intelligent context"""
-        filename = file_info.get("filename", "")
+        filename = file_info.get("filename", "file")
         file_type = file_info.get("type", "")
-        
+        size_bytes = file_info.get("size", None)
+
+        size_str = f" ({size_bytes} bytes)" if isinstance(size_bytes, int) else ""
+
         if file_type.startswith('image/'):
             return {
-                "message": f"📸 **Image received: {filename}**\n\nThis photo can be used as evidence for incident reporting or safety documentation.\n\nWhat would you like to do with this image?",
+                "message": (
+                    f"📸 **Image received: {filename}{size_str}**\n\n"
+                    "This photo can be attached as evidence to an incident report or safety documentation.\n\n"
+                    "What would you like to do with this image?"
+                ),
                 "type": "file_upload_smart",
                 "actions": [
                     {"text": "🚨 Use for Incident Report", "action": "continue_conversation", "message": "I want to report an incident with this photo as evidence"},
-                    {"text": "🛡
+                    {"text": "🛡️ Log Safety Concern", "action": "continue_conversation", "message": "I want to log a safety concern and attach this image"},
+                    {"text": "🗂️ Save to Evidence Library", "action": "navigate", "url": "/evidence/upload"}
+                ],
+                "quick_replies": [
+                    "Attach to new incident",
+                    "Attach to safety concern",
+                    "Save image only",
+                    "Main menu"
+                ]
+            }
+
+        if file_type in ('application/pdf',) or filename.lower().endswith('.pdf'):
+            return {
+                "message": (
+                    f"📄 **PDF received: {filename}{size_str}**\n\n"
+                    "If this is an SDS, I can help you catalog it so others can find it quickly."
+                ),
+                "type": "file_upload_smart",
+                "actions": [
+                    {"text": "📋 Treat as SDS", "action": "navigate", "url": "/sds/upload"},
+                    {"text": "🗂️ Save to Documents", "action": "navigate", "url": "/documents/upload"}
+                ],
+                "quick_replies": [
+                    "Catalog as SDS",
+                    "Save as document",
+                    "Main menu"
+                ]
+            }
+
+        # Generic files
+        return {
+            "message": (
+                f"📎 **File received: {filename}{size_str}**\n\n"
+                "You can attach this to a new incident or save it in documents."
+            ),
+            "type": "file_upload_smart",
+            "actions": [
+                {"text": "🚨 Attach to Incident", "action": "continue_conversation", "message": "Start an incident and attach my file"},
+                {"text": "🗂️ Save to Documents", "action": "navigate", "url": "/documents/upload"}
+            ],
+            "quick_replies": [
+                "Attach to incident",
+                "Save to documents",
+                "Main menu"
+            ]
+        }
+
+    # ------- Utilities & Safety --------
+
+    def _is_emergency(self, text: str) -> bool:
+        """Heuristic emergency detection"""
+        if not text:
+            return False
+        t = text.lower()
+        emergency_triggers = [
+            'emergency', 'call 911', 'bleeding', 'unconscious', 'not breathing',
+            'heart attack', 'fire', 'explosion', 'seizure', 'stroke'
+        ]
+        return any(k in t for k in emergency_triggers)
+
+    def _handle_emergency(self) -> Dict:
+        """Return immediate emergency guidance"""
+        return {
+            "message": (
+                "🚨 **Emergency detected**\n\n"
+                "If anyone is in immediate danger:\n"
+                "• Call emergency services (e.g., 911) now\n"
+                "• Alert on-site emergency response if available\n"
+                "• Follow site emergency procedures\n\n"
+                "I can still help you log what happened once everyone is safe."
+            ),
+            "type": "emergency_notice",
+            "quick_replies": [
+                "Start incident report",
+                "Show emergency contacts",
+                "Main menu"
+            ],
+            "actions": [
+                {"text": "📞 Emergency Contacts", "action": "navigate", "url": "/emergency"},
+                {"text": "🚨 Start Incident Report", "action": "continue_conversation", "message": "I need to report a workplace incident"}
+            ]
+        }
+
+    def _get_general_help_response(self) -> Dict:
+        """Main help menu"""
+        return {
+            "message": (
+                "👋 **Welcome to the EHS Assistant**\n\n"
+                "I can help you report incidents, log safety concerns, and find SDS documents.\n\n"
+                "**Popular actions:**"
+            ),
+            "type": "help_menu",
+            "actions": [
+                {"text": "🚨 Report Incident", "action": "continue_conversation", "message": "I need to report a workplace incident"},
+                {"text": "🛡️ Report Safety Concern", "action": "continue_conversation", "message": "I want to report a safety concern"},
+                {"text": "📋 Find an SDS", "action": "continue_conversation", "message": "I need to find a safety data sheet"},
+                {"text": "📊 Open Dashboard", "action": "navigate", "url": "/dashboard"}
+            ],
+            "quick_replies": [
+                "Report an incident",
+                "Safety concern",
+                "Find SDS",
+                "Show all features"
+            ]
+        }
+
+    def _save_incident_data_safe(self, incident_id: str) -> bool:
+        """Persist incident data locally as JSON (DB-agnostic). Returns True if successful."""
+        try:
+            base = Path("./data/incidents")
+            base.mkdir(parents=True, exist_ok=True)
+
+            payload = {
+                "incident_id": incident_id,
+                "created_at": datetime.utcnow().isoformat(),
+                "incident_type": self.current_context.get("incident_type", "unknown"),
+                "initial_message": self.current_context.get("initial_message"),
+                "collected": self.slot_filling_state.get("collected_data", {}),
+                "history": self.conversation_history[-20:],  # keep recent context
+            }
+
+            with open(base / f"{incident_id}.json", "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+
+            return True
+        except Exception as e:
+            print(f"ERROR: Failed to save incident {incident_id}: {e}")
+            return False
+
+    def _reset_state(self) -> None:
+        """Reset conversation state for next interaction"""
+        self.current_mode = 'general'
+        self.current_context = {}
+        self.slot_filling_state = {}
+
+    def _get_error_recovery_response(self, error_msg: str) -> Dict:
+        """Graceful degradation on unexpected errors"""
+        return {
+            "message": (
+                "⚠️ **Something went wrong on my end**\n\n"
+                "Your last action may not have been saved. You can try again or jump to the dashboard."
+            ),
+            "type": "error_recovery",
+            "debug": str(error_msg),
+            "actions": [
+                {"text": "🔁 Try Again", "action": "continue_conversation", "message": "retry"},
+                {"text": "📊 Dashboard", "action": "navigate", "url": "/dashboard"}
+            ],
+            "quick_replies": [
+                "Retry",
+                "Main menu"
+            ]
+        }
