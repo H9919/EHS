@@ -1,4 +1,4 @@
-# services/embeddings.py - FIXED VERSION with proper SBERT gating
+# services/embeddings.py - FIXED VERSION with clean logging and proper SBERT gating
 import os
 import numpy as np
 from functools import lru_cache
@@ -17,6 +17,7 @@ if ENABLE_SBERT:
         print("⚠ SBERT requested but not available - using fallback embeddings")
         SBERT_AVAILABLE = False
 else:
+    # Only log once when module is imported
     print("ℹ SBERT embeddings disabled via environment variable")
 
 @lru_cache(maxsize=1)
